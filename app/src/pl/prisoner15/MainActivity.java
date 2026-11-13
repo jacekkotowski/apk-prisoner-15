@@ -39,7 +39,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         web.setBackgroundColor(0xFF0B0B0B);
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Bridge(), "Android");
-        setContentView(web);
+        // Android 15 and later draw the app under the status and navigation bars: keep the page clear of them, of the camera cutout and of the keyboard.
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(0xFF0B0B0B);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        if (Build.VERSION.SDK_INT >= 30) root.setOnApplyWindowInsetsListener((v, in) -> {
+            android.graphics.Insets i = in.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout() | android.view.WindowInsets.Type.ime());
+            v.setPadding(i.left, i.top, i.right, i.bottom);
+            return in;
+        });
+        setContentView(root);
         web.loadUrl("file:///android_asset/index.html");
         Reminder.schedule(this);
     }
