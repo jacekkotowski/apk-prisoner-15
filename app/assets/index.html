@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Prisoner 15</title>
+<style>
+:root{--bg:#0b0b0b;--ink:#f2efe6;--mute:#8d8a82;--line:#2b2b2b;--acc:#ffb000}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.35 sans-serif-condensed,"Roboto Condensed",sans-serif}
+#app{height:100%;display:flex;flex-direction:column;padding:16px;gap:12px;max-width:520px;margin:0 auto}
+h1{font-size:15px;letter-spacing:.3em;margin:0;font-weight:700}
+.mute{color:var(--mute)} .acc{color:var(--acc)} .sm{font-size:13px} .up{text-transform:uppercase;letter-spacing:.12em}
+.row{display:flex;gap:8px;align-items:center} .sp{justify-content:space-between} .grow{flex:1;min-height:0} .scroll{overflow-y:auto}
+button{font:inherit;color:var(--ink);background:none;border:1px solid var(--line);border-radius:4px;padding:12px 10px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;font-size:13px}
+button:active{background:#1c1c1c}
+button.big{background:var(--acc);color:#000;border:0;font-size:22px;padding:22px;width:100%;letter-spacing:.2em}
+button.link{border:0;color:var(--mute);padding:8px 4px}
+.seg{display:flex;gap:2px}.seg button{flex:1;border-radius:0}.seg button[aria-pressed=true]{background:var(--ink);color:#000;border-color:var(--ink)}
+.day{font-size:34px;font-weight:700;line-height:1.05;text-transform:uppercase}
+.plan{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0}
+.plan b{font-variant-numeric:tabular-nums}
+.tally svg{display:block;width:100%;height:auto}
+label.f{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+input[type=number],input[type=time]{font:inherit;font-size:20px;font-weight:700;width:96px;text-align:center;color:var(--ink);background:#161616;border:1px solid var(--line);border-radius:4px;padding:8px;user-select:text}
+input[type=time]{width:160px;font-size:17px} input[type=checkbox]{width:26px;height:26px;accent-color:var(--acc)}
+#bar{height:6px;background:var(--line)}#bar i{display:block;height:100%;background:var(--acc);width:0}
+#tap{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+#num{font-size:44vw;line-height:.9;font-weight:700;font-variant-numeric:tabular-nums}
+@media(min-width:520px){#num{font-size:230px}}
+#ex{font-size:26px;font-weight:700;text-transform:uppercase}
+#side{font-size:20px;color:var(--acc);font-weight:700;text-transform:uppercase;min-height:27px}
+#dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--mute);vertical-align:middle}#dot.on{background:var(--acc);border-color:var(--acc)}
+.pm{display:flex;gap:8px}.pm button{font-size:26px;padding:14px 0;flex:1}.pm #doneb{flex:3;font-size:16px;background:var(--ink);color:#000;border-color:var(--ink)}
+#veil{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:30px;font-weight:700;letter-spacing:.2em}
+.stat{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.stat div{border:1px solid var(--line);padding:10px;border-radius:4px}.stat b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.bars{display:flex;gap:2px;align-items:flex-end;height:120px;border-bottom:1px solid var(--line)}
+.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+.bars i{display:block;width:60%;background:var(--ink);border-radius:4px 4px 0 0;min-height:0}
+.bars span{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.days{display:flex;gap:2px}.days span{flex:1;text-align:center;font-size:12px;color:var(--mute)}.days span.t{color:var(--ink);font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line);font-weight:400}th{color:var(--mute)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="engine.js"></script>
+<script>
+const P = P15, app = document.getElementById('app');
+const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {} };
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
+const WARMUP = 'Arm circles · hip circles · slow half squats';
+let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false;
+
+function load() { try { const s = JSON.parse(localStorage.getItem('p15')); if (s && s.v === 1) return s; } catch (e) {} return P.newState(); }
+function save() { localStorage.setItem('p15', JSON.stringify(S)); }
+function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function cue(k) { A.cue(k, !!S.prefs.sound, !!S.prefs.vibe); }
+function go(v) { view = v; armed = false; render(); }
+function cur() { return S.active && S.active.steps[S.active.i]; }
+function counting(st) { return st && st.t === 'set' && P.VAR[st.v].fam === 'push'; }
+
+// A session left over from another day is stored as the work that was done.
+(function () {
+  const a = S.active; if (!a || a.date === P.dateKey(new Date())) return;
+  if (a.done.length) P.finish(S, a, 'ok'); else S.active = null; save();
+})();
+
+function tally(n) {
+  const show = Math.min(n, 60), g = 46, w = 12 * g; let p = '';
+  for (let i = 0; i < show; i++) {
+    const grp = Math.floor(i / 5), k = i % 5, x = (grp % 12) * g + 6, y = Math.floor(grp / 12) * 44 + 4;
+    p += k < 4 ? `M${x + k * 8} ${y}v32` : `M${x - 5} ${y + 26}L${x + 29} ${y + 6}`;
+  }
+  const rows = Math.max(1, Math.ceil(show / 60));
+  return `<svg viewBox="0 0 ${w} ${rows * 44}" role="img" aria-label="${n} days served"><path d="${p}" stroke="#f2efe6" stroke-width="3" stroke-linecap="round" fill="none"/></svg>`;
+}
+function capForm() {
+  const c = S.cap || { std: 10, uneven: 5, squat: 15, bulg: 5 };
+  const f = (k, t) => `<label class="f"><span>${t}</span><input type="number" inputmode="numeric" min="1" max="300" id="c_${k}" value="${c[k]}"></label>`;
+  return f('std', 'Push-ups') + f('uneven', 'Uneven push-ups, each side') + f('squat', 'Squats') + f('bulg', 'Bulgarian split squats, each leg');
+}
+function readCaps() {
+  const c = {}; for (const k of ['std', 'uneven', 'squat', 'bulg']) c[k] = Math.min(300, Math.max(1, Math.round(+document.getElementById('c_' + k).value || 1)));
+  return c;
+}
+function remForm() {
+  const r = JSON.parse(A.getReminder()), t = String(r.h).padStart(2, '0') + ':' + String(r.m).padStart(2, '0');
+  return `<label class="f"><span>Morning reminder</span><span class="row"><input type="time" id="r_t" value="${t}"><input type="checkbox" id="r_on" ${r.on ? 'checked' : ''}></span></label>`;
+}
+function saveRem() { const t = document.getElementById('r_t').value.split(':'); A.setReminder(document.getElementById('r_on').checked, +t[0] || 0, +t[1] || 0); }
+
+const views = {
+  setup: () => `<h1>PRISONER 15</h1>
+    <div class="day">Set your start</div>
+    <div class="mute">Clean, comfortable repetitions in one set. Not your maximum. If unsure, go lower: the app raises them when sessions go well.</div>
+    <div class="grow scroll">${capForm()}${remForm()}
+    <p class="mute sm">Uneven push-ups: one hand on a low, stable, nonslip stack of books. Bulgarian split squats: rear foot on a secure chair. Pain means stop or change the exercise.</p></div>
+    <button class="big" data-a="setup">Lock in</button>`,
+
+  home: () => {
+    const now = new Date(), ses = P.buildSession(S, now, energy), st = P.stats(S, now), last = S.log[S.log.length - 1];
+    const resume = S.active && S.active.date === P.dateKey(now);
+    const seg = ['exhausted', 'normal', 'strong'].map(e => `<button data-a="energy" data-x="${e}" aria-pressed="${e === energy}">${e}</button>`).join('');
+    const hint = note || (st.doneToday ? 'Served today.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : '');
+    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
+    <div><div class="day">${DAYS[ses.dow]}</div><div class="mute up sm">${KIND[ses.kind]} · ${ses.rounds} rounds · about ${Math.ceil(P.estimate(ses.steps) / 60)} min</div></div>
+    <div class="plan"><div class="row sp"><span>${P.VAR[ses.push].name}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.tp.join(' · ')}</b></div>
+    <div class="row sp"><span>${P.VAR[ses.squat].name}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ts.join(' · ')}</b></div></div>
+    <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}</div>
+    <div class="acc sm" id="hint">${hint}</div>
+    ${resume ? '' : `<div class="seg">${seg}</div>`}
+    <button class="big" data-a="${resume ? 'resume' : 'start'}">${resume ? 'Resume' : 'Start'}</button>`;
+  },
+
+  work: () => {
+    const ses = S.active, st = cur(), set = st.t === 'set', v = set && P.VAR[st.v], cm = counting(st);
+    const nx = ses.steps.slice(ses.i + 1).find(x => x.t === 'set');
+    const round = set ? st.round : nx ? nx.round : ses.rounds;
+    const side = set && st.side ? (st.side === 'L' ? 'Left ' : 'Right ') + v.sideWord : '';
+    const sub = set ? (cm ? `Target ${st.target}` + (det ? ' · phone on the floor under your face <i id="dot"></i>' : ' · tap the number for each one') : `Do ${st.target}, then tap done. Slow and clean.`)
+      : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.VAR[nx.v].name.toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
+    return `<div class="row sp"><span class="up sm">Round ${round} / ${ses.rounds}</span><b id="clock" class="up"></b></div>
+    <div id="bar"><i></i></div>
+    <div id="tap" data-a="tap"><div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div></div>
+    ${set ? `<div class="pm"><button data-a="minus" aria-label="one less">−</button><button id="doneb" data-a="done"></button><button data-a="plus" aria-label="one more">+</button></div>` : `<button data-a="skip" style="padding:20px">Skip ${st.t === 'warm' ? 'warm-up' : 'rest'}</button>`}
+    <div class="row sp"><button class="link" data-a="pause">Pause</button>${set ? '<button class="link" data-a="skip">Skip set</button>' : ''}<button class="link" data-a="finish">Finish early</button></div>
+    ${paused ? '<div id="veil" data-a="pause"><div>PAUSED</div><div class="mute sm up">tap to continue</div></div>' : ''}`;
+  },
+
+  done: () => {
+    const ses = S.active, e = { sets: ses.done }, planned = ses.steps.filter(s => s.t === 'set').length;
+    return `<h1>PRISONER 15</h1><div class="day">${ses.done.length < planned ? 'Work done' : 'Day served'}</div>
+    <div class="stat"><div><b>${P.reps(e, 'push')}</b><span class="mute sm up">push-ups</span></div><div><b>${P.reps(e, 'squat')}</b><span class="mute sm up">squats</span></div><div><b>${fmt(ses.secs)}</b><span class="mute sm up">time</span></div></div>
+    <div class="mute">${ses.done.length} of ${planned} sets. ${ses.done.length < planned ? 'A short session is still a session.' : ''}</div>
+    <div class="grow"></div><div class="up sm mute">How did it feel?</div>
+    <div class="seg">${['easy', 'ok', 'hard'].map(f => `<button data-a="feel" data-x="${f}" style="padding:22px 0;font-size:18px">${f}</button>`).join('')}</div>`;
+  },
+
+  stats: () => {
+    const st = P.stats(S, new Date()), max = Math.max(1, ...st.week.map(d => d.reps)), tot = st.side.L + st.side.R;
+    const best = Object.keys(P.VAR).map(k => `<tr><td>${P.VAR[k].name}</td><td class="n">${S.best[k] || '–'}</td><td class="n">${S.cap[k]}</td></tr>`).join('');
+    const log = S.log.slice(-14).reverse().map(e => `<tr><td>${e.date.slice(5)} ${DAYS[e.dow].slice(0, 3)}</td><td>${e.energy}${e.partial ? ', short' : ''}</td><td class="n">${P.reps(e, 'push')}</td><td class="n">${P.reps(e, 'squat')}</td><td class="n">${fmt(e.secs)}</td></tr>`).join('');
+    return `<div class="row sp"><h1>RECORD</h1><button class="link" data-a="go" data-x="home">Back</button></div>
+    <div class="grow scroll" style="display:flex;flex-direction:column;gap:14px">
+    <div class="stat"><div><b>${st.days}</b><span class="mute sm up">days</span></div><div><b>${st.push}</b><span class="mute sm up">push-ups</span></div><div><b>${st.squat}</b><span class="mute sm up">squats</span></div></div>
+    <div><div class="mute sm up" style="margin-bottom:6px">Repetitions, last 7 days</div>
+    <div class="bars">${st.week.map(d => `<div><span>${d.reps || ''}</span><i style="height:${Math.round(d.reps / max * 82)}%"></i></div>`).join('')}</div>
+    <div class="days">${st.week.map(d => `<span class="${d.today ? 't' : ''}">${DAYS[d.dow].slice(0, 2)}</span>`).join('')}</div></div>
+    <div class="mute sm">Left / right balance: ${tot ? `${st.side.L} / ${st.side.R} repetitions` : 'no one-sided sets yet'}</div>
+    <table><tr><th>Exercise</th><th class="n">Best clean set</th><th class="n">Capacity</th></tr>${best}</table>
+    <table><tr><th>Day</th><th>Energy</th><th class="n">Push</th><th class="n">Squat</th><th class="n">Time</th></tr>${log || '<tr><td colspan="5" class="mute">Nothing yet.</td></tr>'}</table></div>`;
+  },
+
+  settings: () => {
+    const c = (k, t) => `<label class="f"><span>${t}</span><input type="checkbox" data-p="${k}" ${S.prefs[k] ? 'checked' : ''}></label>`;
+    return `<div class="row sp"><h1>SETUP</h1><button class="link" data-a="saveSet">Save</button></div>
+    <div class="grow scroll"><div class="mute sm up" style="margin-top:6px">Capacity: clean reps in one set</div>${capForm()}${remForm()}
+    ${c('sound', 'Sound')}${c('vibe', 'Vibration')}${c('sensor', 'Count push-ups with the proximity sensor')}
+    <p class="mute sm">${A.hasProx() ? 'Sensor found. Put the phone on the floor with its top edge under your face. If it miscounts, use − and +, or switch it off and tap.' : 'This phone reports no proximity sensor. Push-ups are counted by tapping.'}</p>
+    <button data-a="erase" id="erase">Erase everything</button></div>`;
+  },
+};
+
+function render() { if (!S.cap) view = 'setup'; app.innerHTML = views[view](); if (view === 'work') paint(); }
+function paint() {
+  const ses = S.active, st = cur(); if (!st) return;
+  document.getElementById('clock').textContent = fmt(P.LIMIT - ses.secs);
+  document.querySelector('#bar i').style.width = (100 * ses.i / ses.steps.length) + '%';
+  document.getElementById('num').textContent = st.t === 'set' ? cnt : fmt(left);
+  const d = document.getElementById('doneb'); if (d) d.textContent = counting(st) && cnt === 0 ? `Did all ${st.target}` : `Done · ${cnt}`;
+  const dot = document.getElementById('dot'); if (dot) dot.className = det && det.near() ? 'on' : '';
+}
+function enter() {
+  const st = cur(); busy = false; det = null; A.prox(false);
+  if (!st) return endWork();
+  if (st.t === 'set') { cnt = counting(st) ? 0 : st.target; if (counting(st) && S.prefs.sensor && A.hasProx()) { det = P.RepDetector(); A.prox(true); } } else left = st.secs;
+  render();
+}
+function next(rec) {
+  const ses = S.active, st = cur();
+  if (rec != null) ses.done.push({ v: st.v, side: st.side, target: st.target, done: rec });
+  ses.i++; save(); if (cur()) cue('step'); enter();
+}
+function rep() {
+  const st = cur(); if (paused || busy || !counting(st)) return;
+  cnt++; paint();
+  if (cnt >= st.target) { busy = true; cue('done'); setTimeout(() => { if (busy) next(cnt); }, 700); } else cue('rep');
+}
+function endWork() {
+  const ses = S.active, st = cur(); busy = false; A.prox(false); A.keepOn(false); paused = false;
+  if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: st.target, done: cnt }); ses.i++; }
+  if (!ses.done.length) { S.active = null; save(); return go('home'); }
+  save(); cue('end'); go('done');
+}
+function begin() { A.keepOn(true); paused = false; lastT = Date.now(); view = 'work'; enter(); }
+
+const acts = {
+  go, energy(x) { energy = x; note = ''; render(); },
+  setup() { S.cap = readCaps(); saveRem(); save(); go('home'); },
+  saveSet() { S.cap = readCaps(); document.querySelectorAll('[data-p]').forEach(c => S.prefs[c.dataset.p] = c.checked); saveRem(); save(); note = ''; go('home'); },
+  erase() { if (!armed) { armed = true; document.getElementById('erase').textContent = 'Tap again to erase everything'; return; } localStorage.removeItem('p15'); A.setReminder(false, 6, 30); S = P.newState(); go('setup'); },
+  start() { note = ''; S.active = P.buildSession(S, new Date(), energy); save(); begin(); },
+  resume() { note = ''; begin(); },
+  tap() { if (det && det.near()) return; rep(); },
+  plus() { if (counting(cur())) rep(); else { cnt++; paint(); } },
+  minus() { if (busy) return; cnt = Math.max(0, cnt - 1); paint(); },
+  done() { if (busy) return; const st = cur(); next(counting(st) && cnt === 0 ? st.target : cnt); },
+  skip() { if (!busy) next(null); },
+  pause() { paused = !paused; lastT = Date.now(); save(); render(); },
+  finish() { endWork(); },
+  feel(x) {
+    const r = P.finish(S, S.active, x); save(); energy = 'normal';
+    note = r.changes.map(c => `${P.VAR[c.v].name}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
+    go('home');
+  },
+};
+app.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) acts[b.dataset.a](b.dataset.x); });
+
+setInterval(() => {
+  const now = Date.now(), dt = Math.min(1, (now - lastT) / 1000); lastT = now;
+  if (view !== 'work' || paused || !S.active) return;
+  const ses = S.active, st = cur(); ses.secs += dt;
+  if (ses.secs >= P.LIMIT) return endWork();
+  if (st && st.t !== 'set') { left -= dt; if (left <= 0) return next(null); }
+  paint(); if (++ticks % 20 === 0) save();
+}, 250);
+
+// Called by the Android side.
+window.onProx = near => { if (!det || paused) return; if (det.feed(!!near, Date.now())) rep(); else paint(); };
+window.hold = () => { if (view === 'work' && !paused) { paused = true; save(); render(); } };
+window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings') { go('home'); return true; } return false; };
+render();
+</script>
+</body>
+</html>
