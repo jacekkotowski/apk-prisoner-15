@@ -2,6 +2,7 @@
 // Run: node tests/ui.js [output folder]. Needs Playwright for Node.
 const { chromium } = require('playwright'); const path = require('path'), assert = require('assert');
 const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={hasProx:()=>true,prox:on=>__c.push('prox:'+on),cue:k=>__c.push('cue:'+k),keepOn:on=>__c.push('keepOn:'+on),
+ runStart:(r,w,t)=>{__c.push('run:'+r+','+w+','+t);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
  getReminder:()=>JSON.stringify(__rem),setReminder:(on,h,m)=>{__rem={on,h,m};__c.push('rem:'+on+','+h+','+m)}};`;
 (async () => {
   const out = process.argv[2] || __dirname, shot = n => path.join(out, n);
@@ -52,6 +53,14 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   for (let i = 0; i < 95; i++) { await pg.clock.runFor(10000); if (!(await pg.$('#clock'))) break; if ((await txt('#ex')) === 'Rest') { await act('skip'); await act('minus'); await act('plus'); } }
   assert.ok(!(await pg.$('#clock')) && (await txt('#app')).includes('How did it feel'), 'limit'); await pg.click('[data-x=hard]');
   s = await state(); assert.ok(s.log[2].secs <= 900 && s.log[2].secs >= 880);
+  // run screen: Galloway intervals follow the pace, the timed 1.6 km sets the pace, the timer runs on the Android side
+  await pg.click('[data-x=run]'); assert.strictEqual(await txt('#r_pace'), '7:00'); assert.strictEqual(await txt('#r_run'), '1:00');
+  await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); assert.strictEqual(await txt('#r_pace'), '6:00'); assert.strictEqual(await txt('#r_run'), '1:30');
+  await pg.fill('#mm', '8:00'); await act('rmile'); assert.strictEqual(await txt('#r_pace'), '7:40'); assert.strictEqual(await txt('#r_run'), '0:30');
+  await pg.click('[data-x="run,1"]'); assert.strictEqual(await txt('#r_run'), '0:35'); await act('rreset'); assert.strictEqual(await txt('#r_run'), '0:30');
+  await pg.click('[data-x="mins,-1"]'); await pg.screenshot({ path: shot('ui_run.png') }); await act('runStart');
+  assert.strictEqual(await txt('#ex'), 'walk'); assert.strictEqual(await txt('#num'), '0:13'); assert.ok((await txt('#rtot')).includes('5:00 of 25:00')); await pg.screenshot({ path: shot('ui_running.png') });
+  await act('runStop'); assert.ok(await pg.$('[data-a=runStart]')); assert.ok((await pg.evaluate('__c')).includes('run:30,30,1500')); assert.strictEqual(await pg.evaluate('back()'), true);
   // setup screen
   await pg.click('[data-x=settings]'); await pg.uncheck('[data-p=sensor]'); await pg.screenshot({ path: shot('ui_setup2.png') }); await act('saveSet'); s = await state(); assert.strictEqual(s.prefs.sensor, false);
   const calls = await pg.evaluate('__c'), fits = await pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth');

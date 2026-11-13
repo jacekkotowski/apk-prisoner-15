@@ -7,12 +7,13 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 - Push-ups are counted by the proximity sensor (face near, then away) or by tapping. Squats: do the set, tap done, correct with − and +.
 - Repetition targets come from your own capacities and rise only after two clean, comfortable sessions of the same variation.
 - Short sessions are stored as work done. The session ends by itself at 15:00.
+- Run screen: Galloway run-walk-run calculator (pace or timed 1.6 km gives run and walk seconds) and an interval timer that speaks "Run" and "Walk" with the screen off, lowering your music only while it speaks.
 
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.
 - `app/assets/index.html`: the interface, shown in a WebView.
-- `app/src/pl/prisoner15/`: `MainActivity` (WebView, proximity sensor, tones, vibration), `Reminder` (morning notification with snooze).
+- `app/src/pl/prisoner15/`: `RunService` (run-walk timer, speech), `MainActivity` (WebView, proximity sensor, tones, vibration), `Reminder` (morning notification with snooze).
 
 ## Build
 

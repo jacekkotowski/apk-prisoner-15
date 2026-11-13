@@ -4,7 +4,7 @@ Hand-built Android APK, no Gradle and no libraries. Package `pl.prisoner15`. Web
 
 Rules:
 
-- Only push-ups and squats. A session never exceeds 15 minutes (`LIMIT`, `BUDGET` in `engine.js`).
+- Strength work is only push-ups and squats; the Run screen is a separate Galloway run-walk timer. A session never exceeds 15 minutes (`LIMIT`, `BUDGET` in `engine.js`).
 - No network permission, no accounts, no added libraries.
 - Never commit `*.keystore` or `signing.env`.
 - Run `node tests/engine.test.js` and `node tests/ui.js` before handing over a build. State plainly what was not tested on a phone.

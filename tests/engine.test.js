@@ -46,4 +46,9 @@ assert.strictEqual(s2.cap.std, 20); assert.strictEqual(s2.best.std, 19);
 const d = P.RepDetector(); let n = 0; const f = (near, t) => { if (d.feed(near, t)) n++; };
 f(true, 1000); f(false, 1600); f(true, 1650); f(false, 1700); f(true, 2600); f(true, 2700); f(false, 3300); f(false, 3400); f(true, 3450); f(false, 3600);
 assert.strictEqual(n, 2);
+// Galloway: slower pace means shorter runs; magic mile gives the long-run pace
+const g = k => { const x = P.galloway(k); return x.run + '/' + x.walk; };
+assert.strictEqual(g(335), '120/30'); assert.strictEqual(g(360), '90/30'); assert.strictEqual(g(420), '60/30'); assert.strictEqual(g(500), '30/30'); assert.strictEqual(g(800), '5/30');
+let prev = 1e9; for (let k = 180; k <= 800; k += 5) { const x = P.galloway(k); assert.ok(x.run <= prev && x.walk === 30); prev = x.run; }
+assert.strictEqual(P.longRunPace(480), 460); assert.strictEqual(P.parseTime('8:30'), 510); assert.strictEqual(P.parseTime('x'), 0); assert.strictEqual(P.mmss(390), '6:30');
 console.log('ENGINE PASS');

@@ -92,6 +92,14 @@
     const side = { L: 0, R: 0 }; state.log.forEach(e => e.sets.forEach(s => { if (s.side) side[s.side] += s.done; }));
     return { days: Object.keys(byDay).length, push: state.log.reduce((s, e) => s + reps(e, 'push'), 0), squat: state.log.reduce((s, e) => s + reps(e, 'squat'), 0), week, side, doneToday: !!byDay[dateKey(today)] };
   }
-  const api = { VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, finish, RepDetector, reps, stats };
+  // Galloway run-walk-run: run and walk seconds for a training pace, from Jeff Galloway's published pace table (per mile).
+  const GAL = [[420, 360, 30], [450, 300, 30], [480, 240, 30], [510, 180, 30], [540, 120, 30], [645, 90, 30], [735, 60, 30], [870, 30, 30], [945, 15, 30], [1020, 10, 30], [1110, 8, 30], [Infinity, 5, 30]];
+  const MILE = 1.609344;
+  function galloway(secPerKm) { const m = secPerKm * MILE, r = GAL.find(x => m <= x[0] + 0.5); return { run: r[1], walk: r[2] }; }
+  // Magic Mile (a timed 1.6 km): long-run pace is predicted marathon pace (x 1.3) plus two minutes per mile. Returned per km.
+  function longRunPace(mileSecs) { return Math.round((mileSecs * 1.3 + 120) / MILE / 5) * 5; }
+  function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  function parseTime(t) { const m = /^\s*(\d{1,2})[:.,](\d{1,2})\s*$/.exec(t || ''); return m && +m[2] < 60 ? +m[1] * 60 + +m[2] : 0; }
+  const api = { galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);
