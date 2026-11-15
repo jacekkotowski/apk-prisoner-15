@@ -57,7 +57,12 @@ public class Reminder extends BroadcastReceiver {
         nm.createNotificationChannel(new NotificationChannel(CH, "Morning reminder", NotificationManager.IMPORTANCE_HIGH));
         PendingIntent open = PendingIntent.getActivity(c, 1, new Intent(c, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent snooze = PendingIntent.getBroadcast(c, 2, new Intent(c, Reminder.class).setAction(SNOOZE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification n = new Notification.Builder(c, CH).setSmallIcon(R.drawable.ic_stat).setContentTitle("Your 15 minutes.").setContentText("Push-ups and squats. Tap to start.")
+        // Never miss twice: after a missed day the reminder asks only for the short session.
+        Calendar y = Calendar.getInstance(); y.add(Calendar.DAY_OF_YEAR, -1);
+        String last = prefs(c).getString("last", null), yk = String.format(java.util.Locale.US, "%04d-%02d-%02d", y.get(Calendar.YEAR), y.get(Calendar.MONTH) + 1, y.get(Calendar.DAY_OF_MONTH));
+        boolean missed = last != null && last.compareTo(yk) < 0;
+        Notification n = new Notification.Builder(c, CH).setSmallIcon(R.drawable.ic_stat).setContentTitle(missed ? "Short one today." : "Your 15 minutes.")
+                .setContentText(missed ? "Four minutes. Two easy rounds. Tap to start." : "Push-ups and squats. Tap to start.")
                 .setContentIntent(open).setAutoCancel(true).addAction(new Notification.Action.Builder(null, "Snooze 10 min", snooze).build()).build();
         nm.notify(ID, n);
         schedule(c);

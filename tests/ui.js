@@ -3,6 +3,7 @@
 const { chromium } = require('playwright'); const path = require('path'), assert = require('assert');
 const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={hasProx:()=>true,prox:on=>__c.push('prox:'+on),cue:k=>__c.push('cue:'+k),keepOn:on=>__c.push('keepOn:'+on),
  runStart:(r,w,t,l)=>{__c.push('run:'+r+','+w+','+t+','+l);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
+ setLastDone:d=>__c.push('last:'+d),exportData:j=>{__c.push('export');window.__exp=j},importData:()=>__c.push('import'),
  getReminder:()=>JSON.stringify(__rem),setReminder:(on,h,m)=>{__rem={on,h,m};__c.push('rem:'+on+','+h+','+m)}};`;
 (async () => {
   const out = process.argv[2] || __dirname, shot = n => path.join(out, n);
@@ -93,12 +94,33 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   await pg.click('[data-x=settings]'); await pg.fill('#c_std', '25'); await pg.click('[data-x="count,both"]'); await pg.click('[data-x="sens,normal"]'); await pg.click('[data-x="rounds,6"]');
   assert.strictEqual(await pg.inputValue('#c_std'), '25'); await pg.screenshot({ path: shot('ui_setup2.png') }); await act('saveSet'); s = await state();
   assert.deepStrictEqual([s.prefs.count, s.prefs.sens, s.prefs.rounds, s.cap.std], ['both', 'normal', 6, 25]);
+  assert.ok((await txt('#hint')).startsWith('Missed a day') && (await txt('#app')).includes('2 rounds')); assert.strictEqual(await txt('#cb'), 'Since day 1: Push-ups 22 → 25'); await pg.click('[data-x=normal]');
   const rounds = +(/(\d) rounds/.exec(await txt('#app'))[1]); assert.ok(rounds % 2 === 0 && rounds >= 4, 'rounds ' + rounds);
   // both: a nose touch counted this approach is not counted again by the sensor; the sensor alone still counts
   await act('start'); await act('skip'); assert.ok(await pg.$('#tap.pad'));
   await pg.evaluate('onProx(true)'); await pg.clock.runFor(200); await touch(); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '1');
   await pg.evaluate('onProx(true)'); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '2');
   await act('finish');
+  // test day, four weeks after the start: offered, not forced; open sets; the second side matches the first; capacities come from the result
+  await day(2026, 11, 14); assert.ok(await pg.isVisible('#testb') && await pg.isVisible('[data-a=start]')); await act('test'); await act('skip');
+  assert.ok((await txt('#app')).includes('Test day') && (await txt('#tap')).includes('until your form slows')); assert.strictEqual(await txt('#doneb'), 'Skip');
+  for (let i = 0; i < 20; i++) await hit(); assert.strictEqual(await txt('#num'), '20'); await pg.screenshot({ path: shot('ui_test.png') }); await act('done'); await act('skip');
+  assert.strictEqual(await txt('#ex'), 'Squats'); assert.strictEqual(await txt('#num'), '30'); await act('plus'); await act('plus'); await act('done'); await act('skip');
+  const first = await txt('#side'); await hit(); await hit(); await hit(); await hit(); await hit(); await act('done');
+  assert.ok((await txt('#side')) !== first && (await txt('#tap')).includes('Target 5')); for (let i = 0; i < 5; i++) await hit(); await pg.clock.runFor(800); await act('skip');
+  assert.strictEqual(await txt('#ex'), 'Bulgarian split squats'); await act('skip'); await act('skip');
+  assert.ok((await txt('#hint')).startsWith('Test done. Push-ups 25 → 20. Uneven push-ups 8 → 5. Squats 30 → 32.'), await txt('#hint'));
+  s = await state(); assert.deepStrictEqual([s.cap.std, s.cap.squat, s.cap.uneven, s.cap.bulg, s.testAt], [20, 32, 5, 8, '2026-12-14']); assert.ok(!(await pg.$('#testb')));
+  assert.ok((await pg.evaluate('__c')).includes('last:2026-12-14')); await pg.screenshot({ path: shot('ui_home3.png') });
+  // Sunday: one sentence about the week
+  await day(2026, 11, 20); assert.ok(/^This week: 1 of 7 days\. 67 repetitions\./.test(await txt('#vd')), await txt('#vd')); await pg.screenshot({ path: shot('ui_sunday.png') });
+  // backup: saved through the Android side; a loaded file replaces the history only after a second tap, and junk is refused
+  await pg.click('[data-x=settings]'); await act('backup'); const exp = JSON.parse(await pg.evaluate('__exp')); assert.strictEqual(exp.cap.std, 20);
+  await pg.evaluate('onBackup(true)'); assert.strictEqual(await txt('#smsg'), 'Backup saved.'); await pg.screenshot({ path: shot('ui_setup3.png') });
+  await act('restore'); assert.ok(!(await pg.evaluate('__c')).includes('import')); await act('restore'); assert.ok((await pg.evaluate('__c')).includes('import'));
+  await pg.evaluate('onImport("junk")'); assert.strictEqual(await txt('#smsg'), 'That did not work.'); assert.strictEqual((await state()).cap.std, 20);
+  exp.cap.std = 40; exp.log = exp.log.slice(0, 2); await pg.evaluate(j => onImport(j), JSON.stringify(exp));
+  s = await state(); assert.ok(s.cap.std === 40 && s.log.length === 2 && (await txt('#hint')) === 'Backup loaded.');
   const calls = await pg.evaluate('__c'), fits = await pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth');
   assert.ok(fits && !errs.length, 'layout or script errors: ' + errs); assert.ok(calls.includes('prox:true') && calls.includes('keepOn:true') && calls.includes('keepOn:false'));
   console.log('UI PASS'); await b.close();

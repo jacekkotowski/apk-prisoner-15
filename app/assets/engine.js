@@ -81,6 +81,47 @@
     state.log.push(entry); state.active = null;
     return { entry, changes };
   }
+  function daysBetween(a, b) { const p = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }; return Math.round((p(b) - p(a)) / 864e5); }
+  // Comeback: where the capacities started and where they are now.
+  function comeback(state, vs) { const c0 = state.cap0; return c0 ? vs.filter(v => c0[v] !== state.cap[v]).map(v => `${VAR[v].name} ${c0[v]} → ${state.cap[v]}`).join(' · ') : ''; }
+  // Test day: offered every four weeks, never forced. One clean set of each variation, stopped when form slows; the second side matches the first.
+  const OPEN = 999, TEST_EVERY = 28;
+  function testDue(state, today) { const k = dateKey(today); return !!state.testAt && daysBetween(state.testAt, k) >= TEST_EVERY && !state.log.some(e => e.date === k); }
+  function buildTest(state, date) {
+    const st = [{ t: 'warm', secs: WARM }];
+    ['std', 'squat', 'uneven', 'bulg'].forEach((v, i) => {
+      if (i) st.push({ t: 'rest', secs: 60 });
+      if (VAR[v].sides === 1) st.push({ t: 'set', v, side: null, target: OPEN, round: 1, test: true });
+      else (state.flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => st.push({ t: 'set', v, side, target: OPEN, round: 1, test: true }));
+    });
+    return { date: dateKey(date), dow: date.getDay(), kind: 'test', push: 'std', squat: 'squat', energy: 'test', rounds: 1, tp: [], ts: [], steps: st, i: 0, secs: 0, done: [], test: true };
+  }
+  function finishTest(state, ses) {
+    const sets = ses.done.filter(s => s.done > 0), changes = [];
+    Object.keys(VAR).forEach(v => {
+      const mine = sets.filter(s => s.v === v); if (!mine.length) return;
+      const n = Math.min(...mine.map(s => s.done));
+      changes.push({ v, from: state.cap[v], to: n }); state.cap[v] = n; state.ok[v] = 0; state.hard[v] = 0;
+      if (n > (state.best[v] || 0)) state.best[v] = n;
+      if (VAR[v].sides === 2) state.flip[v] = !state.flip[v];
+    });
+    const entry = { date: ses.date, dow: ses.dow, kind: 'test', energy: 'test', feel: 'ok', secs: Math.round(ses.secs), partial: false, sets };
+    if (sets.length) { state.log.push(entry); state.testAt = ses.date; }
+    state.active = null;
+    return { entry, changes };
+  }
+  // Never miss twice: true when the last session is older than yesterday.
+  function missed(state, today) { const l = state.log[state.log.length - 1]; return !!l && daysBetween(l.date, dateKey(today)) >= 2; }
+  // One sentence on Sunday about the week that ends today.
+  function verdict(state, today) {
+    if (today.getDay() !== 0 || !state.log.length) return '';
+    const k = dateKey(today), win = (a, b) => { const days = new Set(); let n = 0; state.log.forEach(e => { const d = daysBetween(e.date, k); if (d >= a && d <= b) { days.add(e.date); n += reps(e); } }); return [days.size, n]; };
+    const [d, n] = win(0, 6), prev = win(7, 13)[1];
+    if (!d) return 'Quiet week. The next one starts tomorrow.';
+    const pct = prev ? Math.round((n - prev) / prev * 100) : 0;
+    return `This week: ${d} of 7 days. ${n} repetitions.` + (prev ? ` ${pct >= 0 ? 'Up' : 'Down'} ${Math.abs(pct)}% on last week.` : '');
+  }
+  function milestone(days) { return days >= 100 ? '100 days. Lifer.' : days >= 30 ? "30 days. You're a regular." : days >= 7 ? '7 days. First week served.' : ''; }
   // Counts one repetition when the face comes near and goes away again. touched() tells it a screen touch already counted this approach.
   function RepDetector(minNear, minGap) {
     minNear = minNear || 120; minGap = minGap || 500; let nearAt = 0, last = -1e9, skip = false;
@@ -131,6 +172,6 @@
     const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(y, m - 1, d)) / 864e5);
     return days <= 0 ? 'Ran today.' : days === 1 ? 'Ran yesterday. Every second day is enough; your call.' : 'Run day.';
   }
-  const api = { LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
+  const api = { OPEN, daysBetween, comeback, testDue, buildTest, finishTest, missed, verdict, milestone, LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);

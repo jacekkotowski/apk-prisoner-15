@@ -53,7 +53,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <script src="engine.js"></script>
 <script>
 const P = P15, app = document.getElementById('app');
-const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}' };
+const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {} };
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
@@ -62,8 +62,12 @@ let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left 
 function load() {
   let s = null; try { s = JSON.parse(localStorage.getItem('p15')); } catch (e) {}
   if (!s || s.v !== 1) s = P.newState();
-  s.prefs = Object.assign(P.newState().prefs, s.prefs); return s;
+  s.prefs = Object.assign(P.newState().prefs, s.prefs);
+  if (s.cap && !s.cap0) s.cap0 = Object.assign({}, s.cap); // the comeback line starts here for histories from before v0.5
+  if (s.cap && !s.testAt) s.testAt = s.log.length ? s.log[0].date : P.dateKey(new Date());
+  return s;
 }
+function syncLast() { const l = S.log[S.log.length - 1]; if (l) A.setLastDone(l.date); }
 const touchOn = () => S.prefs.count !== 'sensor' || !A.hasProx(), sensorOn = () => S.prefs.count !== 'touch' && A.hasProx();
 function save() { localStorage.setItem('p15', JSON.stringify(S)); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -75,8 +79,9 @@ function counting(st) { return st && st.t === 'set' && P.VAR[st.v].fam === 'push
 // A session left over from another day is stored as the work that was done.
 (function () {
   const a = S.active; if (!a || a.date === P.dateKey(new Date())) return;
-  if (a.done.length) P.finish(S, a, 'ok'); else S.active = null; save();
+  if (a.done.length) (a.test ? P.finishTest : P.finish)(S, a, 'ok'); else S.active = null; save();
 })();
+syncLast(); if (S.cap && P.missed(S, new Date())) energy = 'exhausted';
 
 function tally(n) {
   const show = Math.min(n, 60), g = 46, w = 12 * g; let p = '';
@@ -115,13 +120,15 @@ const views = {
     const now = new Date(), ses = P.buildSession(S, now, energy), st = P.stats(S, now), last = S.log[S.log.length - 1];
     const resume = S.active && S.active.date === P.dateKey(now);
     const seg = ['exhausted', 'normal', 'strong'].map(e => `<button data-a="energy" data-x="${e}" aria-pressed="${e === energy}">${e}</button>`).join('');
-    const hint = note || (st.doneToday ? 'Served today.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : '');
+    const cb = P.comeback(S, [ses.push, ses.squat]), vd = P.verdict(S, now), ms = P.milestone(st.days), due = !resume && P.testDue(S, now);
+    const hint = note || (st.doneToday ? 'Served today.' : P.missed(S, now) ? 'Missed a day. Short one today: two easy rounds.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : '');
     return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
     <div><div class="day">${DAYS[ses.dow]}</div><div class="mute up sm">${KIND[ses.kind]} · ${ses.rounds} rounds · about ${Math.ceil(P.estimate(ses.steps) / 60)} min</div></div>
     <div class="plan"><div class="row sp"><span>${P.VAR[ses.push].name}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.tp.join(' · ')}</b></div>
-    <div class="row sp"><span>${P.VAR[ses.squat].name}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ts.join(' · ')}</b></div></div>
-    <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}</div>
-    <div class="acc sm" id="hint">${hint}</div>
+    <div class="row sp"><span>${P.VAR[ses.squat].name}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ts.join(' · ')}</b></div>${cb ? `<div class="mute sm" id="cb" style="margin-top:6px">Since day 1: ${cb}</div>` : ''}</div>
+    <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}${ms ? `<div class="mute sm" id="ms" style="margin-top:6px">${ms}</div>` : ''}</div>
+    ${vd ? `<div class="sm" id="vd">${vd}</div>` : ''}<div class="acc sm" id="hint">${hint}</div>
+    ${due ? '<button data-a="test" id="testb">Test day: find your numbers · replaces today</button>' : ''}
     ${resume ? '' : `<div class="seg">${seg}</div>`}
     <button class="big" data-a="${resume ? 'resume' : 'start'}">${resume ? 'Resume' : 'Start'}</button>${tabs('home')}`;
   },
@@ -129,12 +136,12 @@ const views = {
   work: () => {
     const ses = S.active, st = cur(), set = st.t === 'set', v = set && P.VAR[st.v], cm = counting(st);
     const nx = ses.steps.slice(ses.i + 1).find(x => x.t === 'set');
-    const round = set ? st.round : nx ? nx.round : ses.rounds;
+    const round = set ? st.round : nx ? nx.round : ses.rounds, open = set && want >= P.OPEN;
     const side = set && st.side ? (st.side === 'L' ? 'Left ' : 'Right ') + v.sideWord : '';
     const pad = cm && touchOn();
-    const sub = set ? (cm ? `Target ${want}` + (det ? ' · sensor on <i id="dot"></i>' : '') : `Do ${want}, then tap done. Slow and clean.`)
+    const sub = open ? (cm ? 'Clean reps until your form slows. Stop before failure.' + (det ? ' <i id="dot"></i>' : '') : 'Clean reps until your form slows. Set the number, tap done.') : set ? (cm ? `Target ${want}` + (det ? ' · sensor on <i id="dot"></i>' : '') : `Do ${want}, then tap done. Slow and clean.`)
       : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.VAR[nx.v].name.toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
-    return `<div class="row sp"><span class="up sm">Round ${round} / ${ses.rounds}</span><b id="clock" class="up"></b></div>
+    return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `Round ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
     <div id="bar"><i></i></div>
     <div id="tap"${pad ? ' class="pad" data-pad="1"' : ''}>${pad ? '<div class="padlab">NOSE ON THE PAD</div>' : ''}<div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div></div>
     ${set ? `<div class="pm"><button data-a="minus" aria-label="one less">−</button><button id="doneb" data-a="done"></button><button data-a="plus" aria-label="one more">+</button></div>` : `<button data-a="skip" style="padding:20px">Skip ${st.t === 'warm' ? 'warm-up' : 'rest'}</button>`}
@@ -200,6 +207,9 @@ const views = {
     ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
     ${c('sound', 'Sound')}${c('vibe', 'Vibration')}
     <p class="mute sm">Touch: put the phone on the floor and touch the marked pad with your nose; each touch is one push-up. High counts every contact. ${A.hasProx() ? 'Sensor: top edge of the phone under your face.' : 'This phone reports no proximity sensor, so push-ups are counted by touch.'}</p>
+    <div class="acc sm" id="smsg"></div>
+    <div class="row" style="flex-wrap:wrap"><button data-a="backup">Save backup</button><button data-a="restore" id="restore">Load backup</button><button data-a="test">Test day now</button></div>
+    <p class="mute sm">Backup is one file with your whole history. Keep it outside the phone.</p>
     <button data-a="erase" id="erase">Erase everything</button></div>`;
   },
 };
@@ -225,13 +235,13 @@ function paint() {
   document.getElementById('clock').textContent = fmt(P.LIMIT - ses.secs);
   document.querySelector('#bar i').style.width = (100 * ses.i / ses.steps.length) + '%';
   document.getElementById('num').textContent = st.t === 'set' ? cnt : fmt(left);
-  const d = document.getElementById('doneb'); if (d) d.textContent = counting(st) && cnt === 0 ? `Did all ${want}` : `Done · ${cnt}`;
+  const d = document.getElementById('doneb'); if (d) d.textContent = counting(st) && cnt === 0 ? (want >= P.OPEN ? 'Skip' : `Did all ${want}`) : `Done · ${cnt}`;
   const dot = document.getElementById('dot'); if (dot) dot.className = det && det.near() ? 'on' : '';
 }
 function enter() {
   const st = cur(); busy = false; det = null; A.prox(false);
   if (!st) return endWork();
-  if (st.t === 'set') { want = P.target(S.active, st); cnt = counting(st) ? 0 : want; if (counting(st) && sensorOn()) { det = P.RepDetector(); A.prox(true); } } else left = st.secs;
+  if (st.t === 'set') { want = P.target(S.active, st); cnt = counting(st) ? 0 : want >= P.OPEN ? S.cap[st.v] : want; if (counting(st) && sensorOn()) { det = P.RepDetector(); A.prox(true); } } else left = st.secs;
   render();
 }
 function next(rec) {
@@ -248,13 +258,20 @@ function endWork() {
   const ses = S.active, st = cur(); busy = false; A.prox(false); A.keepOn(false); paused = false;
   if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round }); ses.i++; }
   if (!ses.done.length) { S.active = null; save(); return go('home'); }
+  if (ses.test) {
+    const r = P.finishTest(S, ses); save(); syncLast(); cue('end'); energy = 'normal';
+    note = 'Test done. ' + r.changes.map(c => `${P.VAR[c.v].name} ${c.from} → ${c.to}.`).join(' '); return go('home');
+  }
   save(); cue('end'); go('done');
 }
 function begin() { A.keepOn(true); paused = false; lastT = Date.now(); view = 'work'; enter(); }
 
 const acts = {
   go, energy(x) { energy = x; note = ''; render(); },
-  setup() { S.cap = readCaps(); saveRem(); save(); go('home'); },
+  setup() { S.cap = readCaps(); S.cap0 = Object.assign({}, S.cap); S.testAt = P.dateKey(new Date()); saveRem(); save(); go('home'); },
+  test() { note = ''; S.active = P.buildTest(S, new Date()); save(); begin(); },
+  backup() { A.exportData(JSON.stringify(S)); },
+  restore() { if (!armed) { armed = true; document.getElementById('restore').textContent = 'Tap again: replaces everything here'; return; } armed = false; A.importData(); },
   saveSet() { grab(); saveRem(); save(); note = ''; go('home'); },
   erase() { if (!armed) { armed = true; document.getElementById('erase').textContent = 'Tap again to erase everything'; return; } localStorage.removeItem('p15'); A.setReminder(false, 6, 30); S = P.newState(); go('setup'); },
   rset(x) {
@@ -283,7 +300,7 @@ const acts = {
   resume() { note = ''; begin(); },
   plus() { if (counting(cur())) rep(); else { cnt++; paint(); } },
   minus() { if (busy) return; cnt = Math.max(0, cnt - 1); paint(); },
-  done() { if (busy) return; const st = cur(); next(counting(st) && cnt === 0 ? want : cnt); },
+  done() { if (busy) return; const st = cur(); next(counting(st) && cnt === 0 ? (want >= P.OPEN ? null : want) : cnt); },
   skip() { if (!busy) next(null); },
   pause() { paused = !paused; lastT = Date.now(); save(); render(); },
   // Finishing in the middle of a pair: the other side is still owed, with the same repetitions.
@@ -292,7 +309,7 @@ const acts = {
   loud() { S.prefs.loud = document.getElementById('loud').checked; save(); },
   rtest() { A.runStart(3, 3, 6, !!S.prefs.loud); render(); },
   feel(x) {
-    const r = P.finish(S, S.active, x); save(); energy = 'normal';
+    const r = P.finish(S, S.active, x); save(); syncLast(); energy = 'normal';
     note = r.changes.map(c => `${P.VAR[c.v].name}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
     go('home');
   },
@@ -324,6 +341,13 @@ setInterval(() => {
 
 // Called by the Android side.
 window.onProx = near => { if (!det || paused) return; if (det.feed(!!near, Date.now())) rep(); else paint(); };
+window.onBackup = ok => { const m = document.getElementById('smsg'); if (m) m.textContent = ok ? 'Backup saved.' : 'That did not work.'; };
+window.onImport = text => {
+  let o = null; try { o = JSON.parse(text); } catch (e) {}
+  if (!o || o.v !== 1 || !o.cap || !Array.isArray(o.log)) return window.onBackup(false);
+  localStorage.setItem('p15', JSON.stringify(o)); S = load(); S.active = null; S.pendingRun = null; save(); syncLast();
+  energy = P.missed(S, new Date()) ? 'exhausted' : 'normal'; note = 'Backup loaded.'; go('home');
+};
 window.hold = () => { if (view === 'work' && !paused) { paused = true; save(); render(); } };
 window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings' || view === 'run') { go('home'); return true; } return false; };
 render();

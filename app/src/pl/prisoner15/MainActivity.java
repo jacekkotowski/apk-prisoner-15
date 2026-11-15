@@ -65,6 +65,27 @@ public class MainActivity extends Activity implements SensorEventListener {
         web.evaluateJavascript("window.back?back():false", v -> { if (!"true".equals(v)) finish(); });
     }
 
+    private String pendingExport;
+    private void js(String code) { web.evaluateJavascript("window." + code.substring(0, code.indexOf('(')) + "&&" + code, null); }
+
+    /** Backup: the system file picker returns where to write the history, or which file to read back. No storage permission is needed. */
+    @Override protected void onActivityResult(int req, int res, android.content.Intent data) {
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        try {
+            if (req == 10 && pendingExport != null) {
+                try (java.io.OutputStream o = getContentResolver().openOutputStream(data.getData())) { o.write(pendingExport.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+                js("onBackup(true)");
+            } else if (req == 11) {
+                java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+                try (java.io.InputStream in = getContentResolver().openInputStream(data.getData())) {
+                    byte[] buf = new byte[8192]; int n;
+                    while ((n = in.read(buf)) > 0 && b.size() < 8000000) b.write(buf, 0, n);
+                }
+                js("onImport(" + org.json.JSONObject.quote(new String(b.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)) + ")");
+            }
+        } catch (Exception e) { js("onBackup(false)"); }
+    }
+
     private void stopProx() { if (listening) { sensors.unregisterListener(this); listening = false; } }
 
     @Override public void onSensorChanged(SensorEvent e) {
@@ -102,6 +123,20 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         @JavascriptInterface public void runStop() { stopService(new android.content.Intent(MainActivity.this, RunService.class)); RunService.on = false; }
         @JavascriptInterface public String runState() { return RunService.state(); }
+
+        @JavascriptInterface public void setLastDone(String date) { Reminder.prefs(MainActivity.this).edit().putString("last", date).apply(); }
+
+        @JavascriptInterface public void exportData(String json) {
+            pendingExport = json;
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                    .setType("application/json").putExtra(android.content.Intent.EXTRA_TITLE, "prisoner15-backup.json");
+            runOnUiThread(() -> { try { startActivityForResult(i, 10); } catch (RuntimeException e) { js("onBackup(false)"); } });
+        }
+
+        @JavascriptInterface public void importData() {
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("*/*");
+            runOnUiThread(() -> { try { startActivityForResult(i, 11); } catch (RuntimeException e) { js("onBackup(false)"); } });
+        }
 
         @JavascriptInterface public String getReminder() {
             return "{\"on\":" + Reminder.on(MainActivity.this) + ",\"h\":" + Reminder.hour(MainActivity.this) + ",\"m\":" + Reminder.minute(MainActivity.this) + "}";

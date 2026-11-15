@@ -80,4 +80,22 @@ assert.deepStrictEqual(P.finishRun(rs, runOf(1200, 'easy')), { done: true, chang
 P.finishRun(rs, runOf(1500, 'hard')); P.finishRun(rs, runOf(1500, 'hard')); assert.strictEqual(rs.run.level, 3);
 assert.strictEqual(rs.runs.length, 6); assert.ok(!rs.runs[0].done && rs.runs[2].done);
 assert.strictEqual(P.runAdvice(rs, day(1)), 'Ran today.'); assert.ok(P.runAdvice(rs, day(2)).startsWith('Ran yesterday')); assert.strictEqual(P.runAdvice(rs, day(3)), 'Run day.');
+// comeback line, never miss twice, weekly verdict, milestones
+const cs = st(C); cs.cap0 = Object.assign({}, C); assert.strictEqual(P.comeback(cs, ['std', 'squat']), ''); cs.cap.std = 26;
+assert.strictEqual(P.comeback(cs, ['std', 'squat']), 'Push-ups 22 → 26');
+assert.ok(!P.missed(cs, day(1))); P.finish(cs, run(cs, P.buildSession(cs, day(1), 'normal')), 'ok');
+assert.ok(!P.missed(cs, day(1)) && !P.missed(cs, day(2)) && P.missed(cs, day(3)));
+assert.strictEqual(P.verdict(cs, day(3)), ''); assert.ok(/^This week: 1 of 7 days\. \d+ repetitions\.$/.test(P.verdict(cs, day(7))), P.verdict(cs, day(7)));
+P.finish(cs, run(cs, P.buildSession(cs, day(8), 'exhausted')), 'ok'); assert.ok(/1 of 7 days.*Down \d+% on last week\.$/.test(P.verdict(cs, day(14))));
+assert.strictEqual(P.verdict(cs, day(28)), 'Quiet week. The next one starts tomorrow.');
+assert.deepStrictEqual([6, 7, 29, 30, 100].map(P.milestone), ['', '7 days. First week served.', '7 days. First week served.', "30 days. You're a regular.", '100 days. Lifer.']);
+// test day: due after four weeks, all four variations inside 15 minutes, sides equal, capacities set from the result
+const ts = st(C); ts.testAt = P.dateKey(day(1)); assert.ok(!P.testDue(ts, day(28)) && P.testDue(ts, day(29)));
+const t = P.buildTest(ts, day(29)), tsets = t.steps.filter(q => q.t === 'set');
+assert.deepStrictEqual(tsets.map(q => q.v + (q.side || '')), ['std', 'squat', 'unevenL', 'unevenR', 'bulgL', 'bulgR']); assert.ok(t.steps.filter(q => q.t !== 'set').reduce((a, q) => a + q.secs, 0) <= 300);
+const rec = (q, n) => t.done.push({ v: q.v, side: q.side, target: P.target(t, q), done: n, round: 1 });
+rec(tsets[0], 27); rec(tsets[1], 35); rec(tsets[2], 9); assert.strictEqual(P.target(t, tsets[3]), 9); rec(tsets[3], 9);
+const tr = P.finishTest(ts, t); assert.deepStrictEqual([ts.cap.std, ts.cap.squat, ts.cap.uneven, ts.cap.bulg], [27, 35, 9, 8]);
+assert.ok(tr.changes.length === 3 && ts.testAt === P.dateKey(day(29)) && !P.testDue(ts, day(30)) && ts.log.length === 1 && ts.flip.uneven && !ts.flip.bulg);
+const t0 = P.buildTest(ts, day(60)); P.finishTest(ts, t0); assert.strictEqual(ts.log.length, 1);
 console.log('ENGINE PASS');
