@@ -16,6 +16,7 @@ button{font:inherit;color:var(--ink);background:none;border:1px solid var(--line
 button:active{background:#1c1c1c}
 button.big{background:var(--acc);color:#000;border:0;font-size:22px;padding:22px;width:100%;letter-spacing:.2em}
 button.link{border:0;color:var(--mute);padding:8px 4px}
+.tabs button{padding:14px 0;font-size:14px}
 .seg{display:flex;gap:2px}.seg button{flex:1;border-radius:0}.seg button[aria-pressed=true]{background:var(--ink);color:#000;border-color:var(--ink)}
 .day{font-size:34px;font-weight:700;line-height:1.05;text-transform:uppercase}
 .plan{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0}
@@ -56,7 +57,7 @@ const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn(
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
-let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0;
+let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '';
 
 function load() {
   let s = null; try { s = JSON.parse(localStorage.getItem('p15')); } catch (e) {}
@@ -115,14 +116,14 @@ const views = {
     const resume = S.active && S.active.date === P.dateKey(now);
     const seg = ['exhausted', 'normal', 'strong'].map(e => `<button data-a="energy" data-x="${e}" aria-pressed="${e === energy}">${e}</button>`).join('');
     const hint = note || (st.doneToday ? 'Served today.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : '');
-    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="run">Run</button><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
+    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
     <div><div class="day">${DAYS[ses.dow]}</div><div class="mute up sm">${KIND[ses.kind]} · ${ses.rounds} rounds · about ${Math.ceil(P.estimate(ses.steps) / 60)} min</div></div>
     <div class="plan"><div class="row sp"><span>${P.VAR[ses.push].name}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.tp.join(' · ')}</b></div>
     <div class="row sp"><span>${P.VAR[ses.squat].name}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ts.join(' · ')}</b></div></div>
     <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}</div>
     <div class="acc sm" id="hint">${hint}</div>
     ${resume ? '' : `<div class="seg">${seg}</div>`}
-    <button class="big" data-a="${resume ? 'resume' : 'start'}">${resume ? 'Resume' : 'Start'}</button>`;
+    <button class="big" data-a="${resume ? 'resume' : 'start'}">${resume ? 'Resume' : 'Start'}</button>${tabs('home')}`;
   },
 
   work: () => {
@@ -162,6 +163,7 @@ const views = {
     <div class="days">${st.week.map(d => `<span class="${d.today ? 't' : ''}">${DAYS[d.dow].slice(0, 2)}</span>`).join('')}</div></div>
     <div class="mute sm">Left / right balance: ${tot ? `${st.side.L} / ${st.side.R} repetitions` : 'no one-sided sets yet'}</div>
     <table><tr><th>Exercise</th><th class="n">Best clean set</th><th class="n">Capacity</th></tr>${best}</table>
+    <table><tr><th>Run</th><th>Run/walk</th><th>Feel</th><th class="n">Time</th></tr>${(S.runs || []).slice(-10).reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${P.mmss(r.run)} / ${P.mmss(r.walk)}</td><td>${r.feel}${r.done ? '' : ', short'}</td><td class="n">${fmt(r.secs)}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">No runs yet.</td></tr>'}</table>
     <table><tr><th>Day</th><th>Energy</th><th class="n">Push</th><th class="n">Squat</th><th class="n">Time</th></tr>${log || '<tr><td colspan="5" class="mute">Nothing yet.</td></tr>'}</table></div>`;
   },
 
@@ -169,18 +171,26 @@ const views = {
     const r = runCfg(), st = JSON.parse(A.runState());
     if (st.on) return `<div class="row sp"><h1>RUN · WALK · RUN</h1><span class="up sm mute">${P.mmss(r.run)} / ${P.mmss(r.walk)}</span></div>
     <div id="bar"><i></i></div>
-    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute sm" style="margin-top:14px">Spoken cues keep going with the screen off. Your music keeps playing.</div></div>
+    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute sm" style="margin-top:14px">Run as long as you like. 20 minutes counts as a run. Cues keep going with the screen off; your music keeps playing.</div></div>
     <button data-a="runStop" style="padding:20px">Stop</button>`;
     const pm = (k, t, v) => `<div class="f"><span>${t}</span><span class="row"><button data-a="rset" data-x="${k},-1" aria-label="less">−</button><b class="val" id="r_${k}">${v}</b><button data-a="rset" data-x="${k},1" aria-label="more">+</button></span></div>`;
-    return `<div class="row sp"><h1>RUN · WALK · RUN</h1><button class="link" data-a="go" data-x="home">Back</button></div>
-    <div class="mute sm">Galloway method: planned walk breaks from the first minute, so you finish fresh. Pick an easy pace: you should be able to talk.</div>
-    <div class="grow scroll">${pm('pace', 'Pace per km', P.mmss(r.pace))}
-    <label class="f"><span>or timed 1.6 km<br><span class="mute sm">sets your long-run pace</span></span><span class="row"><input id="mm" inputmode="numeric" placeholder="8:30" style="width:86px"><button data-a="rmile">Set</button></span></label>
-    ${pm('run', 'Run' + (r.custom ? '' : ' · Galloway'), P.mmss(r.run))}${pm('walk', 'Walk', P.mmss(r.walk))}${pm('mins', 'Minutes', r.mins)}
+    return `<div class="row sp"><h1>RUN · WALK · RUN</h1><button class="link" data-a="go" data-x="stats">Record</button></div>
+    <div><div class="acc" id="advice">${runNote || P.runAdvice(S, new Date())}</div>
+    <div class="mute sm">Galloway: walk breaks from the first minute. Easy pace, you can talk. ${r.custom ? 'Your own run/walk.' : `Step ${r.level + 1} of ${P.LADDER.length}: two comfortable runs of 20+ minutes move you up.`}</div></div>
+    <div class="grow scroll">${pm('run', 'Run', P.mmss(r.run))}${pm('walk', 'Walk', P.mmss(r.walk))}${pm('mins', 'Target minutes', r.mins)}
     <label class="f"><span>Loud cues<br><span class="mute sm">alarm volume, for wind and traffic</span></span><span class="row"><input type="checkbox" id="loud" data-a="loud" ${S.prefs.loud ? 'checked' : ''}><button data-a="rtest">Test</button></span></label>
-    <div class="mute sm" style="padding-top:8px">About ${(r.mins * 60 / r.pace).toFixed(1)} km at this pace. ${r.custom ? '<button class="link" data-a="rreset">Back to Galloway</button>' : ''}</div></div>
-    <button class="big" data-a="runStart">Start</button>`;
+    ${pm('pace', 'Easy pace per km', P.mmss(r.pace))}
+    <label class="f"><span>or timed 1.6 km<br><span class="mute sm">pace sets the starting step</span></span><span class="row"><input id="mm" inputmode="numeric" placeholder="8:30" style="width:86px"><button data-a="rmile">Set</button></span></label>
+    <div class="mute sm" style="padding-top:8px">About ${(r.mins * 60 / r.pace).toFixed(1)} km in ${r.mins} minutes at this pace. ${r.custom ? '<button class="link" data-a="rreset">Back to the plan</button>' : ''}</div></div>
+    <button class="big" data-a="runStart">Start</button>${tabs('run')}`;
   },
+
+  runDone: () => { const p = S.pendingRun; return `<h1>RUN · WALK · RUN</h1><div class="day">${p.secs >= P.RUN_DONE ? 'Run done' : 'Short run'}</div>
+    <div class="stat"><div><b>${fmt(p.secs)}</b><span class="mute sm up">time</span></div><div><b>${P.mmss(p.run)}</b><span class="mute sm up">run</span></div><div><b>${P.mmss(p.walk)}</b><span class="mute sm up">walk</span></div></div>
+    <div class="mute">${p.secs >= P.RUN_DONE ? 'Counts as a run.' : 'Logged. 20 minutes or more counts as a run.'}</div>
+    <div class="grow"></div><div class="up sm mute">How did it feel?</div>
+    <div class="seg">${['easy', 'ok', 'hard'].map(f => `<button data-a="runFeel" data-x="${f}" style="padding:22px 0;font-size:18px">${f}</button>`).join('')}</div>
+    <button class="link" data-a="runDiscard">Discard this run</button>`; },
 
   settings: () => {
     const sg = (k, t, o) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="mute sm up" style="margin-bottom:6px">${t}</div><div class="seg">${o.map(([v, l]) => `<button data-a="pref" data-x="${k},${v}" aria-pressed="${S.prefs[k] === v}">${l}</button>`).join('')}</div></div>`;
@@ -195,18 +205,21 @@ const views = {
 };
 
 function runCfg() {
-  if (!S.run) { S.run = { pace: 420, mins: 30, custom: false }; Object.assign(S.run, P.galloway(420)); }
-  return S.run;
+  if (!S.run) S.run = { pace: 420, mins: 30, custom: false };
+  const r = S.run; if (r.level == null) r.level = P.levelFor(r.pace);
+  if (!r.custom) [r.run, r.walk] = P.LADDER[r.level];
+  return r;
 }
+function tabs(v) { return `<div class="seg tabs">${[['home', 'Strength'], ['run', 'Run']].map(([k, l]) => `<button data-a="go" data-x="${k}" aria-pressed="${v === k}">${l}</button>`).join('')}</div>`; }
 function paintRun() {
   const st = JSON.parse(A.runState()), ex = document.getElementById('ex');
   if (!st.on || !ex) { if (!!ex !== !!st.on) render(); return; }
   ex.textContent = st.phase; ex.className = st.phase === 'run' ? 'acc' : '';
   document.getElementById('num').textContent = fmt(st.left); document.getElementById('num').style.fontSize = '34vw';
-  document.getElementById('rtot').textContent = fmt(st.elapsed) + ' of ' + fmt(st.total);
-  document.querySelector('#bar i').style.width = (100 * st.elapsed / st.total) + '%';
+  document.getElementById('rtot').textContent = fmt(st.elapsed) + (st.elapsed < st.total ? ' of ' + fmt(st.total) : ' · target reached, go on or stop');
+  document.querySelector('#bar i').style.width = Math.min(100, 100 * st.elapsed / st.total) + '%';
 }
-function render() { if (!S.cap) view = 'setup'; app.innerHTML = views[view](); if (view === 'work') paint(); if (view === 'run') paintRun(); }
+function render() { if (!S.cap) view = 'setup'; else if (S.pendingRun && view !== 'runDone') view = 'runDone'; app.innerHTML = views[view](); if (view === 'work') paint(); if (view === 'run') paintRun(); }
 function paint() {
   const ses = S.active, st = cur(); if (!st) return;
   document.getElementById('clock').textContent = fmt(P.LIMIT - ses.secs);
@@ -246,16 +259,26 @@ const acts = {
   erase() { if (!armed) { armed = true; document.getElementById('erase').textContent = 'Tap again to erase everything'; return; } localStorage.removeItem('p15'); A.setReminder(false, 6, 30); S = P.newState(); go('setup'); },
   rset(x) {
     const r = runCfg(), [k, d] = x.split(','), cl = (v, a, b) => Math.min(b, Math.max(a, v));
-    if (k === 'pace') { r.pace = cl(r.pace + d * 15, 180, 780); if (!r.custom) Object.assign(r, P.galloway(r.pace)); }
+    if (k === 'pace') { r.pace = cl(r.pace + d * 15, 180, 780); r.level = P.levelFor(r.pace); r.ok = r.hard = 0; }
     if (k === 'mins') r.mins = cl(r.mins + d * 5, 5, 180);
     if (k === 'run') { r.run = cl(r.run + d * (r.run + (d < 0 ? -1 : 0) >= 60 ? 30 : 5), 5, 600); r.custom = true; }
     if (k === 'walk') { r.walk = cl(r.walk + d * 5, 5, 300); r.custom = true; }
-    save(); render();
+    runNote = ''; save(); render();
   },
-  rmile() { const t = P.parseTime(document.getElementById('mm').value); if (!t) return; const r = runCfg(); r.pace = Math.min(780, Math.max(180, P.longRunPace(t))); r.custom = false; Object.assign(r, P.galloway(r.pace)); save(); render(); },
-  rreset() { const r = runCfg(); r.custom = false; Object.assign(r, P.galloway(r.pace)); save(); render(); },
-  runStart() { const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud); render(); },
-  runStop() { A.runStop(); render(); },
+  rmile() { const t = P.parseTime(document.getElementById('mm').value); if (!t) return; const r = runCfg(); r.pace = Math.min(780, Math.max(180, P.longRunPace(t))); r.custom = false; r.level = P.levelFor(r.pace); r.ok = r.hard = 0; save(); render(); },
+  rreset() { runCfg().custom = false; save(); render(); },
+  runStart() { runNote = ''; const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud); render(); },
+  runStop() {
+    const st = JSON.parse(A.runState()), r = runCfg(); A.runStop();
+    if (st.on && st.elapsed >= 60) { S.pendingRun = { date: P.dateKey(new Date()), secs: st.elapsed, run: r.run, walk: r.walk, level: r.level, custom: r.custom }; save(); return go('runDone'); }
+    render();
+  },
+  runFeel(f) {
+    const res = P.finishRun(S, Object.assign(S.pendingRun, { feel: f })); S.pendingRun = null; save();
+    runNote = res.change > 0 ? `Step up: run ${P.mmss(S.run.run)}, walk ${P.mmss(S.run.walk)}.` : res.change < 0 ? `One step back: run ${P.mmss(S.run.run)}, walk ${P.mmss(S.run.walk)}.` : res.done ? 'Run logged.' : 'Short run logged.';
+    go('run');
+  },
+  runDiscard() { S.pendingRun = null; save(); go('run'); },
   start() { note = ''; S.active = P.buildSession(S, new Date(), energy); save(); begin(); },
   resume() { note = ''; begin(); },
   plus() { if (counting(cur())) rep(); else { cnt++; paint(); } },

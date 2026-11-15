@@ -110,6 +110,27 @@
   function longRunPace(mileSecs) { return Math.round((mileSecs * 1.3 + 120) / MILE / 5) * 5; }
   function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function parseTime(t) { const m = /^\s*(\d{1,2})[:.,](\d{1,2})\s*$/.exec(t || ''); return m && +m[2] < 60 ? +m[1] * 60 + +m[2] : 0; }
-  const api = { galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
+  // Running plan: run/walk steps. A run of 20 minutes or more counts as done; longer is welcome and shorter is still logged.
+  // Two done runs that were not hard move one step up; two hard ones move one step down. Runs never change the strength plan.
+  const LADDER = [[15, 45], [30, 30], [45, 30], [60, 30], [90, 30], [120, 30], [180, 30], [240, 30], [300, 30]], RUN_DONE = 1200;
+  function levelFor(pace) { const g = galloway(pace).run; let i = 0; LADDER.forEach((x, k) => { if (x[0] <= g) i = k; }); return i; }
+  function finishRun(state, r) {
+    const R = state.run, done = r.secs >= RUN_DONE; let change = 0;
+    (state.runs = state.runs || []).push({ date: r.date, secs: Math.round(r.secs), run: r.run, walk: r.walk, feel: r.feel, done });
+    if (done && !r.custom && r.level === R.level) {
+      if (r.feel === 'hard') { R.ok = 0; R.hard = (R.hard || 0) + 1; if (R.hard >= 2 && R.level > 0) { R.level--; R.hard = 0; change = -1; } }
+      else { R.hard = 0; R.ok = (R.ok || 0) + 1; if (R.ok >= 2 && R.level < LADDER.length - 1) { R.level++; R.ok = 0; change = 1; } }
+    }
+    if (change && !R.custom) [R.run, R.walk] = LADDER[R.level];
+    return { done, change };
+  }
+  // Running every second day is suggested, never required.
+  function runAdvice(state, today) {
+    const runs = state.runs || []; if (!runs.length) return 'First run: any day.';
+    const [y, m, d] = runs[runs.length - 1].date.split('-').map(Number);
+    const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(y, m - 1, d)) / 864e5);
+    return days <= 0 ? 'Ran today.' : days === 1 ? 'Ran yesterday. Every second day is enough; your call.' : 'Run day.';
+  }
+  const api = { LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);

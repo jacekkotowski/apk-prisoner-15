@@ -8,7 +8,7 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 - Push-ups are counted by touching the marked pad with your nose (counted at first contact), by the proximity sensor, or both. Squats: do the set, tap done, correct with − and +.
 - Repetition targets come from your own capacities and rise only after two clean, comfortable sessions of the same variation.
 - Short sessions are stored as work done. The session ends by itself at 15:00.
-- Run screen: Galloway run-walk-run calculator (pace or timed 1.6 km gives run and walk seconds) and an interval timer that speaks "Run" and "Walk" with the screen off, lowering your music only while it speaks.
+- Two tabs, Strength and Run. Run: Galloway run-walk-run with a step plan (15/45 s up to 5 min / 30 s). Two comfortable runs of 20+ minutes move one step up. The timer speaks "Run" and "Walk" with the screen off, keeps going past the target until you stop, and lowers your music only while it speaks. Running every second day is suggested, never required.
 
 ## Layout
 

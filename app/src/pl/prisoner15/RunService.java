@@ -35,7 +35,8 @@ public class RunService extends Service {
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
-    private boolean ttsOk, half, loud;
+    private boolean ttsOk, half, loud, reached;
+    static final int MAX = 3 * 3600; // safety stop after three hours
     private int seg = -1, prevAlarm = -1;
     private PowerManager.WakeLock lock;
     private AudioManager am;
@@ -47,7 +48,9 @@ public class RunService extends Service {
     /** What the screen shows: phase, seconds left in it, seconds elapsed and total. */
     static String state() {
         if (!on) return "{\"on\":false}";
-        double e = Math.min(total, (SystemClock.elapsedRealtime() - t0) / 1000.0), pos = e % (run + walk);
+        double e = Math.max(0, (SystemClock.elapsedRealtime() - t0) / 1000.0);
+        if (total < 60) e = Math.min(total, e);
+        double pos = e % (run + walk);
         boolean r = pos < run;
         return "{\"on\":true,\"phase\":\"" + (r ? "run" : "walk") + "\",\"left\":" + (r ? run - pos : run + walk - pos) + ",\"elapsed\":" + e + ",\"total\":" + total + "}";
     }
@@ -78,7 +81,7 @@ public class RunService extends Service {
         try { tone = new ToneGenerator(loud ? AudioManager.STREAM_ALARM : AudioManager.STREAM_MUSIC, loud ? 100 : 90); } catch (RuntimeException e) { tone = null; }
         if (lock == null) lock = ((PowerManager) getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "prisoner15:run");
         if (lock.isHeld()) lock.release();
-        lock.acquire((total + 30) * 1000L);
+        lock.acquire((Math.max(total, MAX) + 60) * 1000L);
         if (tts == null) tts = new TextToSpeech(this, status -> {
             if (status != TextToSpeech.SUCCESS) return;
             int r = tts.setLanguage(Locale.US);
@@ -87,7 +90,7 @@ public class RunService extends Service {
         });
         else if (ttsOk) tts.setAudioAttributes(aa);
         h.removeCallbacksAndMessages(null);
-        seg = -1; half = false; t0 = SystemClock.elapsedRealtime() + 3000; on = true; // three seconds to put the phone away
+        seg = -1; half = false; reached = false; t0 = SystemClock.elapsedRealtime() + 3000; on = true; // three seconds to put the phone away
         h.postDelayed(this::tick, 3000);
         return START_NOT_STICKY;
     }
@@ -95,7 +98,9 @@ public class RunService extends Service {
     private void tick() {
         if (!on) return;
         double e = (SystemClock.elapsedRealtime() - t0) / 1000.0;
-        if (e >= total) { say("Done. Well run.", 3); on = false; h.postDelayed(this::stopSelf, 5000); return; }
+        // A short test ends by itself. A real run keeps going past the target until the user stops it, up to three hours.
+        if ((total < 60 && e >= total) || e >= MAX) { say(e >= MAX ? "Three hours. Timer stopped." : "Done.", 3); on = false; h.postDelayed(this::stopSelf, 5000); return; }
+        if (!reached && total >= 60 && e >= total) { reached = true; say((total / 60) + " minutes. Stop when you like.", 3); }
         int cyc = run + walk, s = (int) (e / cyc) * 2 + (e % cyc < run ? 0 : 1);
         if (!half && e >= total / 2.0) { half = true; say("Halfway.", 0); }
         if (s != seg) { seg = s; say(s % 2 == 0 ? "Run" : "Walk", s % 2 == 0 ? 1 : 2); }

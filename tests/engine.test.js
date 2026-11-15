@@ -70,4 +70,14 @@ const d2 = P.RepDetector(); let n2 = 0; const h2 = (near, t) => { if (d2.feed(ne
 h2(true, 1000); d2.touched(); h2(false, 1700); assert.strictEqual(n2, 0);
 h2(true, 2600); h2(false, 3300); assert.strictEqual(n2, 1);
 d2.touched(); h2(true, 5000); h2(false, 5700); assert.strictEqual(n2, 2);
+// running: start level from pace, 20 minutes counts as done, two comfortable done runs step up, short and custom runs never move the plan
+const rs = P.newState(); rs.run = { pace: 420, mins: 30, custom: false, level: P.levelFor(420) }; [rs.run.run, rs.run.walk] = P.LADDER[rs.run.level];
+assert.strictEqual(rs.run.run, 60); assert.strictEqual(P.levelFor(460), 1); assert.strictEqual(P.runAdvice(rs, day(1)), 'First run: any day.');
+const runOf = (secs, feel, extra) => Object.assign({ date: P.dateKey(day(1)), secs, run: rs.run.run, walk: rs.run.walk, level: rs.run.level, custom: false, feel }, extra);
+assert.deepStrictEqual(P.finishRun(rs, runOf(600, 'easy')), { done: false, change: 0 });
+P.finishRun(rs, runOf(1250, 'ok', { custom: true })); P.finishRun(rs, runOf(2400, 'ok')); assert.strictEqual(rs.run.level, 3);
+assert.deepStrictEqual(P.finishRun(rs, runOf(1200, 'easy')), { done: true, change: 1 }); assert.deepStrictEqual([rs.run.run, rs.run.walk], [90, 30]);
+P.finishRun(rs, runOf(1500, 'hard')); P.finishRun(rs, runOf(1500, 'hard')); assert.strictEqual(rs.run.level, 3);
+assert.strictEqual(rs.runs.length, 6); assert.ok(!rs.runs[0].done && rs.runs[2].done);
+assert.strictEqual(P.runAdvice(rs, day(1)), 'Ran today.'); assert.ok(P.runAdvice(rs, day(2)).startsWith('Ran yesterday')); assert.strictEqual(P.runAdvice(rs, day(3)), 'Run day.');
 console.log('ENGINE PASS');

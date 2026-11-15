@@ -8,6 +8,7 @@ Rules:
 
 - Strength work is only push-ups and squats; the Run screen is a separate Galloway run-walk timer. A session never exceeds 15 minutes (`LIMIT`, `BUDGET` in `engine.js`).
 - Owner's training rules, never break them: the number of rounds is always even (2, 4 or 6); one-sided exercises (uneven push-ups, Bulgarian split squats) are always done in pairs with exactly equal repetitions on both sides (`P.target`, `P.hasFirst` in `engine.js`); no static back exercises (no planks or similar); the owner wants the absolute survival minimum.
+- Running (Run tab) is flexible and never changes the strength plan: every second day is suggested, not required; a run of 20 minutes or more counts as done, longer is welcome (the timer goes past the target until stopped), shorter is logged. 5 km is a future goal, not the current one. Progression: run/walk steps (`LADDER`), two comfortable done runs step up.
 - Push-ups are counted by touching the marked pad with the nose (counted at first contact, `pointerdown`); the proximity sensor is optional. Cues on the Run screen must be loud enough for noise (alarm volume).
 - No network permission, no accounts, no added libraries.
 - Never commit `*.keystore`, `*.jks`, `signing.env` or APK files.
