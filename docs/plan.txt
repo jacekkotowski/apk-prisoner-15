@@ -1,0 +1,88 @@
+PRISONER 15
+ANDROID APPLICATION PLAN — VERSION 1.0
+
+1. PURPOSE
+A minimal, offline Android morning fitness coach for a high-stress lifestyle.
+Every morning, maximum 15 minutes. Only two exercise families: push-ups and squats.
+No planks, sit-ups, separate back exercises, gym equipment, accounts, ads or subscriptions.
+The goal is sustainable strength, readiness and consistency, not daily exhaustion.
+
+2. EXERCISE LIBRARY
+A. Standard push-ups: both hands on the floor.
+B. Uneven push-ups: one hand elevated on a low, stable, nonslip stack of books; alternate left and right elevated hand. Begin with reduced repetitions.
+C. Standard bodyweight squats.
+D. Bulgarian split squats: rear foot supported on a stable chair, front leg working; alternate legs and count repetitions per leg. Start shallow, with a lower support if needed.
+These are variations of two exercises, not four mandatory exercises.
+
+3. WEEKLY CYCLE
+Monday: standard push-ups + standard squats; moderate.
+Tuesday: uneven push-ups + Bulgarian split squats; light technique.
+Wednesday: standard push-ups + standard squats; moderate.
+Thursday: uneven push-ups + Bulgarian split squats; light technique.
+Friday: standard push-ups + standard squats; moderate.
+Saturday: uneven push-ups + Bulgarian split squats; light technique.
+Sunday: easy standard push-ups + easy standard squats; recovery.
+Exercise every morning, but do not train hard every day.
+
+4. DAILY SESSION
+One morning reminder: "Your 15 minutes."
+Open app -> choose energy (Exhausted / Normal / Strong) -> start.
+Brief dynamic warm-up, then alternating push-up and squat sets, with short rests.
+Default five rounds on normal days, within a hard 15-minute limit.
+Exhausted mode: two easy rounds (roughly 4–6 minutes).
+Sunday: two or three easy rounds.
+Never rush repetitions to satisfy the timer; shorten the workout instead.
+On asymmetric days, balance left/right work and alternate the starting side between sessions.
+
+5. INITIAL CALIBRATION AND PROGRESSION
+Record comfortable, technically correct capacities separately for standard and uneven push-ups, standard squats and Bulgarian split squats per leg.
+Start below maximum effort, leaving approximately 2–4 good repetitions in reserve on normal sets.
+Five-round repetition targets may vary slightly by round, like the original push-up app (e.g. 16-15-15-15-20), but are generated from measured capacity, not fixed for every user.
+Uneven and Bulgarian variants receive lower starting targets.
+Increase targets only after at least two comfortable sessions of the same variation with satisfactory recovery; do not increase both variation difficulty and total volume at once.
+If sleep, stress, soreness or technique is poor, automatically suggest a lighter session.
+Pain is a stop/modify signal, not a progression target.
+
+6. COUNTING AND SESSION EXPERIENCE
+Push-ups: use the Android proximity sensor to detect approach-and-retreat of the face toward the phone, with calibration, debounce and audio/vibration confirmation. Do not require nose contact with the glass. Verify sensor availability and detection reliability on the device.
+Fallback: large manual count/correction controls.
+Squats: manual counting in MVP; optional camera-assisted counting in a later release.
+Provide clear prompts for round number, target, rest, left/right hand elevation and working leg.
+Allow pause, skip, early finish and correction of counts.
+Record partial sessions honestly as completed work, not failures.
+
+7. MOTIVATION
+A clean, high-contrast workout screen with one large repetition counter and progress bar.
+Brief voice or sound cues; no constant coaching chatter.
+Daily completion, weekly chart, total repetitions, clean-set personal records and left/right balance.
+Recovery and short sessions preserve the habit; no punitive broken streaks.
+One configurable morning notification with snooze; no nagging.
+
+8. ANDROID IMPLEMENTATION
+Native Kotlin + Jetpack Compose.
+Room database for workouts and set history.
+DataStore for preferences and calibration.
+Android notifications and suitable scheduling APIs for morning reminders.
+SensorManager for proximity sensor, with device-specific calibration and fallback.
+Offline-first, no login, cloud dependency, advertising or subscription.
+Deterministic training-plan engine; no AI backend required.
+
+9. MVP BUILD ORDER
+Phase 1: onboarding, energy selection, weekly rotation and configurable five-round workout generator.
+Phase 2: proximity-based push-up counter, manual fallback, rest timer and side-switching prompts.
+Phase 3: local workout history, progress graphs, morning reminders and recovery-aware progression.
+Phase 4 (optional): camera-assisted squat counting and improved accessibility/voice guidance.
+
+10. ACCEPTANCE CRITERIA
+Workout can start in at most two taps after onboarding.
+Every day offers only push-ups and squats, with scheduled variations.
+Five rounds are available, but shorter recovery sessions are supported.
+Workout never requires more than 15 minutes.
+Uneven push-ups and Bulgarian split squats track sides correctly.
+Push-up sensor failures never prevent manual completion.
+Progress survives interruptions and works fully offline.
+
+11. LIMITATIONS
+Push-ups and squats do not directly provide a complete back-pulling stimulus or cardiovascular program. This is an intentional minimalist trade-off.
+A chair and books are optional household supports for variations; standard versions work anywhere without tools.
+Use a secure chair and nonslip, stable book support. Stop or modify exercises if joint pain occurs.

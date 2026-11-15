@@ -2,6 +2,8 @@
 
 Hand-built Android APK, no Gradle and no libraries. Package `pl.prisoner15`. WebView UI in `app/assets/index.html`, training engine in `app/assets/engine.js`, sensor and reminder in `app/src/pl/prisoner15/`. Interface text is English.
 
+Context material: `docs/plan.txt` is the owner's original plan. `docs/naked-warrior.md` is the training basis (Pavel Tsatsouline, *The Naked Warrior*): read it before changing the training logic, and keep only our own summary there, never the book's text or photos.
+
 Rules:
 
 - Strength work is only push-ups and squats; the Run screen is a separate Galloway run-walk timer. A session never exceeds 15 minutes (`LIMIT`, `BUDGET` in `engine.js`).
