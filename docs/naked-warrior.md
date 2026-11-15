@@ -14,6 +14,11 @@ Summary below comes from secondary sources (StrongFirst articles, book summaries
 - Ladders, for example 1-2-3 repeated, are used for the one-arm push-up.
 - The book has progressions for both exercises ("Field-Stripping the Pistol", "Field-Stripping the One-Arm Pushup").
 
+## How the app departs from the book (owner's choice)
+
+- The book spreads practice through the day ("Greasing the Groove"). The owner has one 15-minute morning session instead; the app keeps the book's spirit inside it: submaximal sets, never to failure, low fatigue.
+- The book does not prescribe static back exercises as far as we know (from memory, not checked against the book); the app has none either.
+
 ## Owner's rules that override anything taken from the book
 
 - Rounds are always even (2, 4 or 6).
