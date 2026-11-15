@@ -10,6 +10,8 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 - Short sessions are stored as work done. The session ends by itself at 15:00.
 - Two tabs, Strength and Run. Run: Galloway run-walk-run with a step plan (15/45 s up to 5 min / 30 s). Two comfortable runs of 20+ minutes move one step up. The timer speaks "Run" and "Walk" with the screen off, keeps going past the target until you stop, and lowers your music only while it speaks. Running every second day is suggested, never required.
 
+- Comeback: the home screen shows where your numbers started and where they are, a test day is offered every four weeks, a missed day preselects the short session, Sunday gives one sentence about the week, and Setup saves or loads a backup file of your history.
+
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.

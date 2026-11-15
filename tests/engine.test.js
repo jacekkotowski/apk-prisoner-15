@@ -81,7 +81,8 @@ P.finishRun(rs, runOf(1500, 'hard')); P.finishRun(rs, runOf(1500, 'hard')); asse
 assert.strictEqual(rs.runs.length, 6); assert.ok(!rs.runs[0].done && rs.runs[2].done);
 assert.strictEqual(P.runAdvice(rs, day(1)), 'Ran today.'); assert.ok(P.runAdvice(rs, day(2)).startsWith('Ran yesterday')); assert.strictEqual(P.runAdvice(rs, day(3)), 'Run day.');
 // comeback line, never miss twice, weekly verdict, milestones
-const cs = st(C); cs.cap0 = Object.assign({}, C); assert.strictEqual(P.comeback(cs, ['std', 'squat']), ''); cs.cap.std = 26;
+const fresh = () => ({ std: 22, uneven: 8, squat: 30, bulg: 8 });
+const cs = st(fresh()); cs.cap0 = fresh(); assert.strictEqual(P.comeback(cs, ['std', 'squat']), ''); cs.cap.std = 26;
 assert.strictEqual(P.comeback(cs, ['std', 'squat']), 'Push-ups 22 → 26');
 assert.ok(!P.missed(cs, day(1))); P.finish(cs, run(cs, P.buildSession(cs, day(1), 'normal')), 'ok');
 assert.ok(!P.missed(cs, day(1)) && !P.missed(cs, day(2)) && P.missed(cs, day(3)));
@@ -90,7 +91,7 @@ P.finish(cs, run(cs, P.buildSession(cs, day(8), 'exhausted')), 'ok'); assert.ok(
 assert.strictEqual(P.verdict(cs, day(28)), 'Quiet week. The next one starts tomorrow.');
 assert.deepStrictEqual([6, 7, 29, 30, 100].map(P.milestone), ['', '7 days. First week served.', '7 days. First week served.', "30 days. You're a regular.", '100 days. Lifer.']);
 // test day: due after four weeks, all four variations inside 15 minutes, sides equal, capacities set from the result
-const ts = st(C); ts.testAt = P.dateKey(day(1)); assert.ok(!P.testDue(ts, day(28)) && P.testDue(ts, day(29)));
+const ts = st(fresh()); ts.testAt = P.dateKey(day(1)); assert.ok(!P.testDue(ts, day(28)) && P.testDue(ts, day(29)));
 const t = P.buildTest(ts, day(29)), tsets = t.steps.filter(q => q.t === 'set');
 assert.deepStrictEqual(tsets.map(q => q.v + (q.side || '')), ['std', 'squat', 'unevenL', 'unevenR', 'bulgL', 'bulgR']); assert.ok(t.steps.filter(q => q.t !== 'set').reduce((a, q) => a + q.secs, 0) <= 300);
 const rec = (q, n) => t.done.push({ v: q.v, side: q.side, target: P.target(t, q), done: n, round: 1 });
