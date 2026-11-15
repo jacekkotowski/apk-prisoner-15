@@ -12,6 +12,8 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 
 - Comeback: the home screen shows where your numbers started and where they are, a test day is offered every four weeks, a missed day preselects the short session, Sunday gives one sentence about the week, and Setup saves or loads a backup file of your history.
 
+- Workout voice: counts 3, 2, 1 into the first set, announces round, exercise, side and target, and gives one short tension cue; Setup can switch it off.
+
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.

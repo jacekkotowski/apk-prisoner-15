@@ -53,11 +53,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <script src="engine.js"></script>
 <script>
 const P = P15, app = document.getElementById('app');
-const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {} };
+const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {}, say() {} };
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
-let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '';
+let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '', lastCount = 0;
 
 function load() {
   let s = null; try { s = JSON.parse(localStorage.getItem('p15')); } catch (e) {}
@@ -71,9 +71,22 @@ function syncLast() { const l = S.log[S.log.length - 1]; if (l) A.setLastDone(l.
 const touchOn = () => S.prefs.count !== 'sensor' || !A.hasProx(), sensorOn = () => S.prefs.count !== 'touch' && A.hasProx();
 function save() { localStorage.setItem('p15', JSON.stringify(S)); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-function cue(k) { A.cue(k, !!S.prefs.sound, !!S.prefs.vibe); }
+function cue(k) { A.cue(k, !!S.prefs.sound && !(k === 'step' && S.prefs.voice), !!S.prefs.vibe); } // the voice announces each new set, so its beep is dropped
+function say(t) { if (S.prefs.voice) A.say(t); }
 function go(v) { view = v; armed = false; render(); }
 function cur() { return S.active && S.active.steps[S.active.i]; }
+// One short tension cue per set, shown on screen and spoken once per exercise per session.
+const CUES = { std: 'Crush the floor. Glutes tight. Breathe out sharp.', uneven: 'Crush the floor. Glutes tight. Breathe out sharp.', squat: 'Spread the floor. Abs and glutes tight. Breathe out sharp.', bulg: 'Spread the floor. Abs and glutes tight. Breathe out sharp.' };
+// What the voice says when a step starts: round on the first set of a round, exercise, side, target; the second side is short.
+function phrase(st) {
+  const ses = S.active; if (st.t === 'warm') return 'Warm up.'; if (st.t === 'rest') return 'Rest.';
+  const v = P.VAR[st.v], before = ses.steps.slice(0, ses.i), second = !!st.side && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round);
+  const sw = st.side ? (st.side === 'L' ? 'left ' : 'right ') + (st.v === 'uneven' ? 'hand' : 'leg') : '', n = want >= P.OPEN ? 'Until your form slows.' : `${want}.`;
+  if (second) return `${sw[0].toUpperCase() + sw.slice(1)}. ${n}`;
+  let t = (!ses.test && !before.some(x => x.t === 'set' && x.round === st.round) ? `Round ${st.round}. ` : '') + v.name + (sw ? ', ' + sw : '') + `. ${n}`;
+  if (!before.some(x => x.t === 'set' && x.v === st.v)) t += ' ' + CUES[st.v];
+  return t;
+}
 function counting(st) { return st && st.t === 'set' && P.VAR[st.v].fam === 'push'; }
 
 // A session left over from another day is stored as the work that was done.
@@ -143,7 +156,7 @@ const views = {
       : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.VAR[nx.v].name.toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
     return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `Round ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
     <div id="bar"><i></i></div>
-    <div id="tap"${pad ? ' class="pad" data-pad="1"' : ''}>${pad ? '<div class="padlab">NOSE ON THE PAD</div>' : ''}<div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div></div>
+    <div id="tap"${pad ? ' class="pad" data-pad="1"' : ''}>${pad ? '<div class="padlab">NOSE ON THE PAD</div>' : ''}<div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div>${set ? `<div class="sm" id="tcue" style="color:var(--acc);margin-top:8px;padding:0 16px">${CUES[st.v]}</div>` : ''}</div>
     ${set ? `<div class="pm"><button data-a="minus" aria-label="one less">−</button><button id="doneb" data-a="done"></button><button data-a="plus" aria-label="one more">+</button></div>` : `<button data-a="skip" style="padding:20px">Skip ${st.t === 'warm' ? 'warm-up' : 'rest'}</button>`}
     <div class="row sp"><button class="link" data-a="pause">Pause</button>${set ? '<button class="link" data-a="skip">Skip set</button>' : ''}<button class="link" data-a="finish">Finish early</button></div>
     ${paused ? '<div id="veil" data-a="pause"><div>PAUSED</div><div class="mute sm up">tap to continue</div></div>' : ''}`;
@@ -205,7 +218,7 @@ const views = {
     return `<div class="row sp"><h1>SETUP</h1><button class="link" data-a="saveSet">Save</button></div>
     <div class="grow scroll"><div class="mute sm up" style="margin-top:6px">Capacity: clean reps in one set</div>${capForm()}${remForm()}
     ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
-    ${c('sound', 'Sound')}${c('vibe', 'Vibration')}
+    ${c('sound', 'Sound')}${c('vibe', 'Vibration')}${c('voice', 'Voice in workout')}
     <p class="mute sm">Touch: put the phone on the floor and touch the marked pad with your nose; each touch is one push-up. High counts every contact. ${A.hasProx() ? 'Sensor: top edge of the phone under your face.' : 'This phone reports no proximity sensor, so push-ups are counted by touch.'}</p>
     <div class="acc sm" id="smsg"></div>
     <div class="row" style="flex-wrap:wrap"><button data-a="backup">Save backup</button><button data-a="restore" id="restore">Load backup</button><button data-a="test">Test day now</button></div>
@@ -242,7 +255,7 @@ function enter() {
   const st = cur(); busy = false; det = null; A.prox(false);
   if (!st) return endWork();
   if (st.t === 'set') { want = P.target(S.active, st); cnt = counting(st) ? 0 : want >= P.OPEN ? S.cap[st.v] : want; if (counting(st) && sensorOn()) { det = P.RepDetector(); A.prox(true); } } else left = st.secs;
-  render();
+  lastCount = 0; say(phrase(st)); render();
 }
 function next(rec) {
   const ses = S.active, st = cur();
@@ -259,10 +272,10 @@ function endWork() {
   if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round }); ses.i++; }
   if (!ses.done.length) { S.active = null; save(); return go('home'); }
   if (ses.test) {
-    const r = P.finishTest(S, ses); save(); syncLast(); cue('end'); energy = 'normal';
+    const r = P.finishTest(S, ses); save(); syncLast(); cue('end'); say('Test done.'); energy = 'normal';
     note = 'Test done. ' + r.changes.map(c => `${P.VAR[c.v].name} ${c.from} → ${c.to}.`).join(' '); return go('home');
   }
-  save(); cue('end'); go('done');
+  save(); cue('end'); say('Done.'); go('done');
 }
 function begin() { A.keepOn(true); paused = false; lastT = Date.now(); view = 'work'; enter(); }
 
@@ -335,7 +348,10 @@ setInterval(() => {
     const owed = st && st.t === 'set' && st.side && P.hasFirst(ses, st), grace = ses.secs < P.LIMIT + 60;
     if (grace && st && counting(st) && st.side && !owed && cnt > 0) next(cnt); else if (!(grace && owed)) return endWork();
   }
-  if (st && st.t !== 'set') { left -= dt; if (left <= 0) return next(null); }
+  if (st && st.t !== 'set') {
+    left -= dt; if (left <= 0) return next(null);
+    if (st.t === 'warm') { const n = Math.ceil(left); if (n >= 1 && n <= 3 && n !== lastCount) { lastCount = n; say(String(n)); } } // 3, 2, 1 before the first set
+  }
   paint(); if (++ticks % 20 === 0) save();
 }, 250);
 

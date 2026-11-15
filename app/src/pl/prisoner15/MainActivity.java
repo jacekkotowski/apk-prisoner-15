@@ -11,6 +11,12 @@ import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.tts.TextToSpeech;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import java.util.Locale;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.WindowManager;
@@ -25,6 +31,12 @@ public class MainActivity extends Activity implements SensorEventListener {
     private boolean listening, near;
     private ToneGenerator tone;
     private Vibrator vib;
+    private TextToSpeech tts;
+    private volatile boolean ttsOk;
+    private AudioManager am;
+    private AudioFocusRequest focus;
+    private final Handler h = new Handler(Looper.getMainLooper());
+    private final Runnable letGo = () -> { if (am != null && focus != null) am.abandonAudioFocusRequest(focus); };
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -33,6 +45,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         vib = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         try { tone = new ToneGenerator(AudioManager.STREAM_MUSIC, 80); } catch (RuntimeException e) { tone = null; }
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        // The workout voice speaks over the user's music, which is only lowered while it speaks.
+        am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+        focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(aa).build();
+        tts = new TextToSpeech(this, status -> {
+            if (status != TextToSpeech.SUCCESS) return;
+            int r = tts.setLanguage(Locale.US);
+            tts.setAudioAttributes(aa);
+            ttsOk = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
+        });
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
@@ -56,10 +78,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     @Override protected void onPause() {
         super.onPause();
         stopProx();
+        if (tts != null) tts.stop();
         web.evaluateJavascript("window.hold&&hold()", null);
     }
 
-    @Override protected void onDestroy() { if (tone != null) tone.release(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (tone != null) tone.release(); if (tts != null) tts.shutdown(); super.onDestroy(); }
 
     @Override public void onBackPressed() {
         web.evaluateJavascript("window.back?back():false", v -> { if (!"true".equals(v)) finish(); });
@@ -123,6 +146,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         @JavascriptInterface public void runStop() { stopService(new android.content.Intent(MainActivity.this, RunService.class)); RunService.on = false; }
         @JavascriptInterface public String runState() { return RunService.state(); }
+
+        @JavascriptInterface public void say(String text) {
+            if (!ttsOk) return;
+            runOnUiThread(() -> {
+                am.requestAudioFocus(focus);
+                tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "p15");
+                h.removeCallbacks(letGo); h.postDelayed(letGo, 3500);
+            });
+        }
 
         @JavascriptInterface public void setLastDone(String date) { Reminder.prefs(MainActivity.this).edit().putString("last", date).apply(); }
 

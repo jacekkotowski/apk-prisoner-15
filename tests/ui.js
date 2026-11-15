@@ -3,7 +3,7 @@
 const { chromium } = require('playwright'); const path = require('path'), assert = require('assert');
 const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={hasProx:()=>true,prox:on=>__c.push('prox:'+on),cue:k=>__c.push('cue:'+k),keepOn:on=>__c.push('keepOn:'+on),
  runStart:(r,w,t,l)=>{__c.push('run:'+r+','+w+','+t+','+l);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
- setLastDone:d=>__c.push('last:'+d),exportData:j=>{__c.push('export');window.__exp=j},importData:()=>__c.push('import'),
+ setLastDone:d=>__c.push('last:'+d),say:t=>__c.push('say:'+t),exportData:j=>{__c.push('export');window.__exp=j},importData:()=>__c.push('import'),
  getReminder:()=>JSON.stringify(__rem),setReminder:(on,h,m)=>{__rem={on,h,m};__c.push('rem:'+on+','+h+','+m)}};`;
 (async () => {
   const out = process.argv[2] || __dirname, shot = n => path.join(out, n);
@@ -50,7 +50,7 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   await day(2026, 10, 17); await pg.click('[data-x=exhausted]'); await act('start'); await act('skip');
   assert.strictEqual(await txt('#side'), 'Left hand on books'); await pg.screenshot({ path: shot('ui_uneven.png') });
   await hit(); await hit(); await act('done');
-  assert.strictEqual(await txt('#side'), 'Right hand on books'); assert.ok((await txt('#tap')).includes('Target 2')); assert.strictEqual(await txt('#doneb'), 'Did all 2'); await pg.screenshot({ path: shot('ui_match.png') });
+  assert.strictEqual(await txt('#side'), 'Right hand on books'); assert.ok((await pg.evaluate('__c')).includes('say:Right hand. 2.')); assert.ok((await txt('#tap')).includes('Target 2')); assert.strictEqual(await txt('#doneb'), 'Did all 2'); await pg.screenshot({ path: shot('ui_match.png') });
   await act('done'); await act('skip'); assert.strictEqual(await txt('#side'), 'Left leg in front'); await act('done'); assert.ok((await txt('#tap')).includes('Do 4,')); await act('done');
   for (let i = 0; i < 5; i++) { await act('skip'); await act('done'); await act('done'); if (!(await pg.$('#ex'))) break; }
   assert.ok((await txt('#app')).includes('Day served')); await pg.click('[data-x=ok]'); s = await state();
@@ -98,7 +98,10 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   assert.ok((await txt('#hint')).startsWith('Missed a day') && (await txt('#app')).includes('2 rounds')); assert.strictEqual(await txt('#cb'), 'Since day 1: Push-ups 22 → 25'); await pg.click('[data-x=normal]');
   const rounds = +(/(\d) rounds/.exec(await txt('#app'))[1]); assert.ok(rounds % 2 === 0 && rounds >= 4, 'rounds ' + rounds);
   // both: a nose touch counted this approach is not counted again by the sensor; the sensor alone still counts
-  await act('start'); await act('skip'); assert.ok(await pg.$('#tap.pad'));
+  await act('start'); await pg.clock.runFor(1000); assert.ok((await txt('#tap')).includes('Warm up')); await pg.clock.runFor(60000);
+  { const c = await pg.evaluate('__c'), i3 = c.indexOf('say:3'), i2 = c.indexOf('say:2'), i1 = c.indexOf('say:1'); assert.ok(i3 > 0 && i2 > i3 && i1 > i2, 'countdown 3 2 1: ' + c.filter(x => x.startsWith('say:')));
+    assert.ok(c.some(x => x.startsWith('say:Round 1. Push-ups. ') && x.includes('Crush the floor. Glutes tight. Breathe out sharp.')), 'first set spoken'); assert.ok((await txt('#tcue')).startsWith('Crush the floor')); }
+  assert.ok(await pg.$('#tap.pad'));
   await pg.evaluate('onProx(true)'); await pg.clock.runFor(200); await touch(); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '1');
   await pg.evaluate('onProx(true)'); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '2');
   await act('finish'); const early = await pg.evaluate('__c'); assert.ok(early.includes('prox:true') && early.includes('keepOn:true') && early.includes('keepOn:false'));
@@ -115,6 +118,9 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   assert.ok((await pg.evaluate('__c')).includes('last:2026-12-14')); await pg.screenshot({ path: shot('ui_home3.png') });
   // Sunday: one sentence about the week
   await day(2026, 11, 20); assert.ok(/^This week: 1 of 7 days\. 62 repetitions\./.test(await txt('#vd')), await txt('#vd')); await pg.screenshot({ path: shot('ui_sunday.png') });
+  // voice off: nothing is spoken
+  await pg.click('[data-x=settings]'); await pg.uncheck('[data-p=voice]'); await act('saveSet'); assert.strictEqual((await state()).prefs.voice, false);
+  await act('start'); await act('skip'); assert.ok(!(await pg.evaluate('__c')).some(c => c.startsWith('say:'))); await act('finish');
   // backup: saved through the Android side; a loaded file replaces the history only after a second tap, and junk is refused
   await pg.click('[data-x=settings]'); await act('backup'); const exp = JSON.parse(await pg.evaluate('__exp')); assert.strictEqual(exp.cap.std, 20);
   await pg.evaluate('onBackup(true)'); assert.strictEqual(await txt('#smsg'), 'Backup saved.'); await pg.screenshot({ path: shot('ui_setup3.png') });

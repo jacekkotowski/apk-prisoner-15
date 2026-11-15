@@ -10,7 +10,7 @@
   const REST = 30, WARM = 60, LIMIT = 900, BUDGET = 810; // seconds; BUDGET leaves slack under the hard 15:00
 
   function newState() {
-    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, rounds: 4, count: 'touch', sens: 'high', loud: false } };
+    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, rounds: 4, count: 'touch', sens: 'high', loud: false } };
   }
   function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function dayPlan(dow) { // 0 = Sunday
