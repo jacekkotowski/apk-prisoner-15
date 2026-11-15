@@ -95,8 +95,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             runOnUiThread(() -> { if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); });
         }
 
-        @JavascriptInterface public void runStart(int run, int walk, int total) {
-            startForegroundService(new android.content.Intent(MainActivity.this, RunService.class).putExtra("run", run).putExtra("walk", walk).putExtra("total", total));
+        @JavascriptInterface public void runStart(int run, int walk, int total, boolean loud) {
+            startForegroundService(new android.content.Intent(MainActivity.this, RunService.class).putExtra("run", run).putExtra("walk", walk).putExtra("total", total).putExtra("loud", loud));
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
                 runOnUiThread(() -> requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 2));
         }

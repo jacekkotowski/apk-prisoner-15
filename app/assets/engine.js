@@ -6,18 +6,19 @@
     squat: { name: 'Squats', fam: 'squat', sides: 1, sec: 2.5 },
     bulg: { name: 'Bulgarian split squats', fam: 'squat', sides: 2, sec: 3, sideWord: 'leg in front' },
   };
-  const ROUNDS = { moderate: 5, light: 5, recovery: 3 }, FACTOR = { moderate: 0.7, light: 0.6, recovery: 0.5 };
+  const FACTOR = { moderate: 0.7, light: 0.6, recovery: 0.5 };
   const REST = 30, WARM = 60, LIMIT = 900, BUDGET = 810; // seconds; BUDGET leaves slack under the hard 15:00
 
   function newState() {
-    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, sensor: true } };
+    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, rounds: 4, count: 'touch', sens: 'high', loud: false } };
   }
   function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function dayPlan(dow) { // 0 = Sunday
     if (dow === 0) return { push: 'std', squat: 'squat', kind: 'recovery' };
     return dow % 2 ? { push: 'std', squat: 'squat', kind: 'moderate' } : { push: 'uneven', squat: 'bulg', kind: 'light' };
   }
-  function rounds(kind, energy) { return energy === 'exhausted' ? 2 : ROUNDS[kind]; }
+  // Rounds are always an even number: 2 on exhausted and recovery days, otherwise the chosen 2, 4 or 6 (default 4).
+  function rounds(kind, energy, pref) { return energy === 'exhausted' || kind === 'recovery' ? 2 : pref === 2 || pref === 6 ? pref : 4; }
   function targets(cap, kind, energy, n) {
     let f = FACTOR[kind];
     if (energy === 'exhausted') f = Math.min(f, 0.5);
@@ -25,31 +26,38 @@
     const wave = kind === 'moderate' && energy !== 'exhausted' && n >= 4;
     return Array.from({ length: n }, (_, i) => Math.max(1, Math.round(cap * f * (wave ? (i === 0 ? 1.07 : i === n - 1 ? 1.25 : 1) : 1))));
   }
-  function steps(plan, tp, ts, flip) {
-    const out = [{ t: 'warm', secs: WARM }], n = tp.length;
+  function steps(plan, tp, ts, flip, rest, warm) {
+    const out = [{ t: 'warm', secs: warm }], n = tp.length;
     const add = (v, target, round) => {
       if (VAR[v].sides === 1) out.push({ t: 'set', v, side: null, target, round });
       else (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target, round }));
     };
     for (let r = 0; r < n; r++) {
-      add(plan.push, tp[r], r + 1); out.push({ t: 'rest', secs: REST });
-      add(plan.squat, ts[r], r + 1); if (r < n - 1) out.push({ t: 'rest', secs: REST });
+      add(plan.push, tp[r], r + 1); out.push({ t: 'rest', secs: rest });
+      add(plan.squat, ts[r], r + 1); if (r < n - 1) out.push({ t: 'rest', secs: rest });
     }
     return out;
   }
   function estimate(st) { return st.reduce((s, x) => s + (x.t === 'set' ? x.target * VAR[x.v].sec + (x.side ? 6 : 0) : x.secs), 0); }
-  // Builds today's session. Shortens it (rounds first, then repetitions) until it fits the time budget.
+  // Builds today's session. To fit the time budget it shortens the rests and the warm-up first, then drops two rounds, then lowers repetitions.
   function buildSession(state, date, energy) {
     const dow = date.getDay(), plan = dayPlan(dow);
-    let n = rounds(plan.kind, energy), scale = 1, st, tp, ts;
+    let n = rounds(plan.kind, energy, state.prefs && state.prefs.rounds), scale = 1, rest = REST, warm = WARM, st, tp, ts;
     for (;;) {
       tp = targets(state.cap[plan.push] * scale, plan.kind, energy, n); ts = targets(state.cap[plan.squat] * scale, plan.kind, energy, n);
-      st = steps(plan, tp, ts, state.flip);
+      st = steps(plan, tp, ts, state.flip, rest, warm);
       if (estimate(st) <= BUDGET) break;
-      if (n > 3) n--; else if (scale > 0.05) scale *= 0.9; else break;
+      if (rest > 20) rest = 20; else if (warm > 30) warm = 30; else if (rest > 15) rest = 15;
+      else if (n > 2) { n -= 2; rest = REST; warm = WARM; }
+      else if (scale > 0.05) scale *= 0.9; else break;
     }
     return { date: dateKey(date), dow, kind: plan.kind, push: plan.push, squat: plan.squat, energy, rounds: n, tp, ts, steps: st, i: 0, secs: 0, done: [] };
   }
+  // One-sided exercises are always done in pairs with the same repetitions on both sides.
+  function firstSide(ses, st) { return st.side ? ses.done.find(d => d.v === st.v && d.round === st.round && d.side !== st.side && d.done > 0) : null; }
+  function hasFirst(ses, st) { return !!firstSide(ses, st); }
+  // Repetitions asked for in this set: the second side of a pair never asks for more than the first side did.
+  function target(ses, st) { const f = firstSide(ses, st); return f ? Math.max(1, Math.min(st.target, f.done)) : st.target; }
   // Stores a finished or shortened session and moves the capacities. feel: 'easy' | 'ok' | 'hard'.
   function finish(state, ses, feel) {
     const sets = ses.done, planned = ses.steps.filter(s => s.t === 'set').length;
@@ -73,16 +81,18 @@
     state.log.push(entry); state.active = null;
     return { entry, changes };
   }
-  // Counts one repetition when the face comes near and goes away again.
+  // Counts one repetition when the face comes near and goes away again. touched() tells it a screen touch already counted this approach.
   function RepDetector(minNear, minGap) {
-    minNear = minNear || 120; minGap = minGap || 500; let nearAt = 0, last = -1e9;
+    minNear = minNear || 120; minGap = minGap || 500; let nearAt = 0, last = -1e9, skip = false;
     return {
       feed(near, t) {
         if (near) { if (!nearAt) nearAt = t; return false; }
-        const ok = nearAt && t - nearAt >= minNear && t - last >= minGap; nearAt = 0;
+        const was = nearAt, ok = was && t - was >= minNear && t - last >= minGap && !skip; nearAt = 0;
+        if (was) skip = false;
         if (ok) last = t; return !!ok;
       },
       near() { return !!nearAt; },
+      touched() { if (nearAt) skip = true; },
     };
   }
   function reps(entry, fam) { return entry.sets.reduce((s, x) => s + (!fam || VAR[x.v].fam === fam ? x.done : 0), 0); }
@@ -100,6 +110,6 @@
   function longRunPace(mileSecs) { return Math.round((mileSecs * 1.3 + 120) / MILE / 5) * 5; }
   function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function parseTime(t) { const m = /^\s*(\d{1,2})[:.,](\d{1,2})\s*$/.exec(t || ''); return m && +m[2] < 60 ? +m[1] * 60 + +m[2] : 0; }
-  const api = { galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, finish, RepDetector, reps, stats };
+  const api = { galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);

@@ -13,6 +13,7 @@ import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -23,7 +24,10 @@ import android.os.Vibrator;
 import android.speech.tts.TextToSpeech;
 import java.util.Locale;
 
-/** Run-walk-run interval timer. Keeps time with the screen off and speaks "Run" and "Walk" over the user's music, which is only lowered while it speaks. */
+/**
+ * Run-walk-run interval timer. Keeps time with the screen off and speaks "Run" and "Walk" over the user's music, which is only lowered while it speaks.
+ * Loud cues use the alarm volume, raised to the maximum for the run and put back afterwards, and a beep before each spoken word.
+ */
 public class RunService extends Service {
     static volatile boolean on;
     static volatile long t0;
@@ -31,10 +35,11 @@ public class RunService extends Service {
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
-    private boolean ttsOk, half;
-    private int seg = -1;
+    private boolean ttsOk, half, loud;
+    private int seg = -1, prevAlarm = -1;
     private PowerManager.WakeLock lock;
     private AudioManager am;
+    private AudioAttributes aa;
     private AudioFocusRequest focus;
     private ToneGenerator tone;
     private Vibrator vib;
@@ -51,7 +56,8 @@ public class RunService extends Service {
 
     @Override public int onStartCommand(Intent in, int flags, int id) {
         if (in == null) { stopSelf(); return START_NOT_STICKY; }
-        run = Math.max(1, in.getIntExtra("run", 60)); walk = Math.max(1, in.getIntExtra("walk", 30)); total = Math.max(60, in.getIntExtra("total", 1800));
+        run = Math.max(1, in.getIntExtra("run", 60)); walk = Math.max(1, in.getIntExtra("walk", 30)); total = Math.max(5, in.getIntExtra("total", 1800));
+        loud = in.getBooleanExtra("loud", false);
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         nm.createNotificationChannel(new NotificationChannel("run", "Run timer", NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 3, new Intent(this, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -60,10 +66,17 @@ public class RunService extends Service {
 
         am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         vib = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+        if (loud && prevAlarm < 0) {
+            try {
+                prevAlarm = am.getStreamVolume(AudioManager.STREAM_ALARM);
+                am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+            } catch (RuntimeException e) { prevAlarm = -1; }
+        } else if (!loud) restoreAlarm();
+        aa = new AudioAttributes.Builder().setUsage(loud ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(aa).build();
-        try { tone = new ToneGenerator(AudioManager.STREAM_MUSIC, 90); } catch (RuntimeException e) { tone = null; }
-        if (lock == null) { lock = ((PowerManager) getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "prisoner15:run"); }
+        if (tone != null) tone.release();
+        try { tone = new ToneGenerator(loud ? AudioManager.STREAM_ALARM : AudioManager.STREAM_MUSIC, loud ? 100 : 90); } catch (RuntimeException e) { tone = null; }
+        if (lock == null) lock = ((PowerManager) getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "prisoner15:run");
         if (lock.isHeld()) lock.release();
         lock.acquire((total + 30) * 1000L);
         if (tts == null) tts = new TextToSpeech(this, status -> {
@@ -72,6 +85,7 @@ public class RunService extends Service {
             ttsOk = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
             tts.setAudioAttributes(aa);
         });
+        else if (ttsOk) tts.setAudioAttributes(aa);
         h.removeCallbacksAndMessages(null);
         seg = -1; half = false; t0 = SystemClock.elapsedRealtime() + 3000; on = true; // three seconds to put the phone away
         h.postDelayed(this::tick, 3000);
@@ -81,26 +95,39 @@ public class RunService extends Service {
     private void tick() {
         if (!on) return;
         double e = (SystemClock.elapsedRealtime() - t0) / 1000.0;
-        if (e >= total) { say("Done. Well run.", 3); on = false; h.postDelayed(this::stopSelf, 4000); return; }
+        if (e >= total) { say("Done. Well run.", 3); on = false; h.postDelayed(this::stopSelf, 5000); return; }
         int cyc = run + walk, s = (int) (e / cyc) * 2 + (e % cyc < run ? 0 : 1);
         if (!half && e >= total / 2.0) { half = true; say("Halfway.", 0); }
         if (s != seg) { seg = s; say(s % 2 == 0 ? "Run" : "Walk", s % 2 == 0 ? 1 : 2); }
         h.postDelayed(this::tick, 200);
     }
 
-    /** Speaks, or beeps when no voice is installed; buzzes 1 = run, 2 = walk, 3 = finished. */
+    /** Speaks, or beeps when no voice is installed; buzzes 1 = run, 2 = walk, 3 = finished. Loud: a beep first, then the word. */
     private void say(String text, int buzz) {
+        int tn = buzz == 2 ? ToneGenerator.TONE_PROP_BEEP2 : buzz == 3 ? ToneGenerator.TONE_PROP_ACK : ToneGenerator.TONE_PROP_BEEP;
+        if (tone != null && (loud || !ttsOk)) tone.startTone(tn, loud ? 500 : 400);
         if (ttsOk) {
+            final long d = loud ? 650 : 0;
             am.requestAudioFocus(focus);
-            tts.speak(text, TextToSpeech.QUEUE_ADD, null, "p15");
-            h.postDelayed(() -> am.abandonAudioFocusRequest(focus), 2500);
-        } else if (tone != null && buzz > 0) tone.startTone(buzz == 1 ? ToneGenerator.TONE_PROP_BEEP : buzz == 2 ? ToneGenerator.TONE_PROP_BEEP2 : ToneGenerator.TONE_PROP_ACK, 400);
+            h.postDelayed(() -> {
+                Bundle p = new Bundle();
+                p.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f);
+                tts.speak(text, TextToSpeech.QUEUE_ADD, p, "p15");
+            }, d);
+            h.postDelayed(() -> am.abandonAudioFocusRequest(focus), 3000 + d);
+        }
         if (buzz > 0 && vib != null && vib.hasVibrator())
             vib.vibrate(VibrationEffect.createWaveform(buzz == 1 ? new long[]{0, 500} : buzz == 2 ? new long[]{0, 150, 150, 150} : new long[]{0, 200, 150, 200, 150, 500}, -1));
     }
 
+    private void restoreAlarm() {
+        if (prevAlarm >= 0 && am != null) { try { am.setStreamVolume(AudioManager.STREAM_ALARM, prevAlarm, 0); } catch (RuntimeException e) { /* leave it */ } }
+        prevAlarm = -1;
+    }
+
     @Override public void onDestroy() {
         on = false; h.removeCallbacksAndMessages(null);
+        restoreAlarm();
         if (am != null && focus != null) am.abandonAudioFocusRequest(focus);
         if (tts != null) tts.shutdown();
         if (tone != null) tone.release();

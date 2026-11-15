@@ -2,7 +2,7 @@
 // Run: node tests/ui.js [output folder]. Needs Playwright for Node.
 const { chromium } = require('playwright'); const path = require('path'), assert = require('assert');
 const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={hasProx:()=>true,prox:on=>__c.push('prox:'+on),cue:k=>__c.push('cue:'+k),keepOn:on=>__c.push('keepOn:'+on),
- runStart:(r,w,t)=>{__c.push('run:'+r+','+w+','+t);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
+ runStart:(r,w,t,l)=>{__c.push('run:'+r+','+w+','+t+','+l);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
  getReminder:()=>JSON.stringify(__rem),setReminder:(on,h,m)=>{__rem={on,h,m};__c.push('rem:'+on+','+h+','+m)}};`;
 (async () => {
   const out = process.argv[2] || __dirname, shot = n => path.join(out, n);
@@ -11,58 +11,80 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   await pg.clock.install({ time: new Date(2026, 10, 16, 6, 30) }); // a Monday
   await pg.addInitScript(STUB); await pg.goto('file://' + path.join(__dirname, '..', 'app', 'assets', 'index.html'));
   const txt = s => pg.textContent(s), act = a => pg.click(`[data-a=${a}]`), state = () => pg.evaluate('JSON.parse(localStorage.p15)');
+  const touch = () => pg.dispatchEvent('#tap', 'pointerdown', { bubbles: true, cancelable: true });
+  const hit = async () => { await touch(); await pg.clock.runFor(400); };
+  const day = async (y, m, d) => { await pg.clock.install({ time: new Date(y, m, d, 6, 30) }); await pg.reload(); };
   // onboarding
   await pg.screenshot({ path: shot('ui_setup.png') });
   await pg.fill('#c_std', '22'); await pg.fill('#c_squat', '30'); await pg.fill('#c_uneven', '8'); await pg.fill('#c_bulg', '8');
   await pg.fill('#r_t', '06:15'); await pg.check('#r_on'); await act('setup');
-  assert.ok((await txt('#app')).includes('Monday') && (await txt('.plan')).includes('16 · 15 · 15 · 15 · 19'));
+  assert.ok((await txt('#app')).includes('Monday') && (await txt('#app')).includes('4 rounds') && (await txt('.plan')).includes('16 · 15 · 15 · 19'));
   await pg.screenshot({ path: shot('ui_home.png') });
   // one tap to start; warm-up counts down and can be skipped
   await act('start'); assert.strictEqual(await txt('#ex'), 'Warm up'); await pg.clock.runFor(5000); assert.ok(/0:5[56]/.test(await txt('#num'))); await act('skip');
-  // push-ups: the sensor counts near-then-far, a touch while the face is near is ignored
+  // push-ups: the marked pad counts at first contact; a second contact in the same instant is bounce
   assert.strictEqual(await txt('#ex'), 'Push-ups'); assert.strictEqual(await txt('#doneb'), 'Did all 16');
-  const pushup = async () => { await pg.evaluate('onProx(true)'); await pg.clock.runFor(400); await pg.click('#tap'); await pg.evaluate('onProx(false)'); await pg.clock.runFor(400); };
-  await pushup(); await pushup(); assert.strictEqual(await txt('#num'), '2');
-  await pg.click('#tap'); await act('minus'); await act('plus'); assert.strictEqual(await txt('#num'), '3'); await pg.screenshot({ path: shot('ui_pushups.png') });
-  // pause stops the clock; leaving the app pauses too
-  const c0 = await txt('#clock'); await act('pause'); await pg.clock.runFor(20000); await pg.screenshot({ path: shot('ui_paused.png') }); await pg.click('#veil'); assert.strictEqual(await txt('#clock'), c0);
+  assert.ok(await pg.isVisible('#tap.pad') && (await txt('#tap')).includes('NOSE ON THE PAD'));
+  await touch(); await touch(); await pg.clock.runFor(400); assert.strictEqual(await txt('#num'), '1');
+  await hit(); assert.strictEqual(await txt('#num'), '2'); assert.ok(await pg.$('#tap.pad'));
+  await act('plus'); await act('minus'); await act('plus'); assert.strictEqual(await txt('#num'), '3'); await pg.screenshot({ path: shot('ui_pushups.png') });
+  // pause stops the clock and the pad; leaving the app pauses too
+  const c0 = await txt('#clock'); await act('pause'); await touch(); await pg.clock.runFor(20000); assert.strictEqual(await txt('#num'), '3'); await pg.screenshot({ path: shot('ui_paused.png') }); await pg.click('#veil'); assert.strictEqual(await txt('#clock'), c0);
   await pg.evaluate('hold()'); assert.ok(await pg.isVisible('#veil')); assert.strictEqual(await pg.evaluate('back()'), true); await pg.click('#veil');
-  for (let i = 3; i < 16; i++) await pushup(); await pg.clock.runFor(800);
+  for (let i = 3; i < 16; i++) await hit(); await pg.clock.runFor(800);
   // reaching the target moves on by itself to the rest, then to squats
   assert.strictEqual(await txt('#ex'), 'Rest'); await pg.screenshot({ path: shot('ui_rest.png') }); await pg.clock.runFor(31000);
-  assert.strictEqual(await txt('#ex'), 'Squats'); assert.strictEqual(await txt('#num'), '22'); await act('minus'); await pg.screenshot({ path: shot('ui_squats.png') }); await act('done');
+  assert.strictEqual(await txt('#ex'), 'Squats'); assert.strictEqual(await txt('#num'), '22'); assert.ok(!(await pg.$('#tap.pad'))); await act('minus'); await pg.screenshot({ path: shot('ui_squats.png') }); await act('done');
   // the session survives the app being closed
-  const early = await pg.evaluate('__c'); assert.ok(early.includes('cue:rep') && early.includes('cue:done') && early.includes('rem:true,6,15'));
   await pg.reload(); assert.ok((await txt('.big')).includes('Resume')); await act('resume'); assert.strictEqual(await txt('#ex'), 'Rest'); await act('skip');
   await act('done'); await act('skip'); await act('skip'); await act('finish');
   // a shortened session is recorded as work done
-  assert.ok((await txt('#app')).includes('Work done') && (await txt('#app')).includes('3 of 10 sets')); await pg.screenshot({ path: shot('ui_done.png') });
+  assert.ok((await txt('#app')).includes('Work done') && (await txt('#app')).includes('3 of 8 sets')); await pg.screenshot({ path: shot('ui_done.png') });
   await act('feel'); let s = await state();
   assert.deepStrictEqual(s.log[0].sets.map(x => x.done), [16, 21, 15]); assert.ok(s.log[0].partial && !s.active && s.cap.std === 22);
   assert.ok((await txt('#hint')).includes('Work recorded'));
   await pg.click('[data-x=stats]'); assert.ok((await txt('#app')).includes('52')); await pg.screenshot({ path: shot('ui_record.png') }); await pg.click('[data-x=home]');
-  // Tuesday: one-sided work, left then right, squats per leg
-  await pg.clock.setFixedTime(new Date(2026, 10, 17, 6, 30)); await pg.reload(); await pg.click('[data-x=exhausted]'); await act('start'); await act('skip');
-  assert.strictEqual(await txt('#side'), 'Left hand on books'); await pg.screenshot({ path: shot('ui_uneven.png') }); await act('done'); assert.strictEqual(await txt('#side'), 'Right hand on books'); await act('done');
-  await act('skip'); assert.strictEqual(await txt('#side'), 'Left leg in front'); await act('done'); await act('done');
+  // Tuesday: one-sided work. The second side asks for exactly what the first side did, never more
+  await day(2026, 10, 17); await pg.click('[data-x=exhausted]'); await act('start'); await act('skip');
+  assert.strictEqual(await txt('#side'), 'Left hand on books'); await pg.screenshot({ path: shot('ui_uneven.png') });
+  await hit(); await hit(); await act('done');
+  assert.strictEqual(await txt('#side'), 'Right hand on books'); assert.ok((await txt('#tap')).includes('Target 2')); assert.strictEqual(await txt('#doneb'), 'Did all 2'); await pg.screenshot({ path: shot('ui_match.png') });
+  await act('done'); await act('skip'); assert.strictEqual(await txt('#side'), 'Left leg in front'); await act('done'); assert.ok((await txt('#tap')).includes('Do 4,')); await act('done');
   for (let i = 0; i < 5; i++) { await act('skip'); await act('done'); await act('done'); if (!(await pg.$('#ex'))) break; }
   assert.ok((await txt('#app')).includes('Day served')); await pg.click('[data-x=ok]'); s = await state();
   assert.ok(!s.log[1].partial && s.flip.uneven && s.flip.bulg && s.log[1].sets.length === 8);
-  // the 15 minute limit ends the session on its own
-  await pg.clock.install({ time: new Date(2026, 10, 18, 6, 30) }); await pg.reload(); await act('start'); await act('skip'); await act('done');
-  for (let i = 0; i < 95; i++) { await pg.clock.runFor(10000); if (!(await pg.$('#clock'))) break; if ((await txt('#ex')) === 'Rest') { await act('skip'); await act('minus'); await act('plus'); } }
-  assert.ok(!(await pg.$('#clock')) && (await txt('#app')).includes('How did it feel'), 'limit'); await pg.click('[data-x=hard]');
+  assert.deepStrictEqual(s.log[1].sets.slice(0, 2).map(x => x.side + x.done), ['L2', 'R2']);
+  // the 15 minute limit ends a two-sided-free session on its own
+  await day(2026, 10, 18); await act('start'); await act('skip'); await act('done');
+  await pg.clock.runFor(1000000); assert.ok(!(await pg.$('#clock')) && (await txt('#app')).includes('How did it feel'), 'limit'); await pg.click('[data-x=hard]');
   s = await state(); assert.ok(s.log[2].secs <= 900 && s.log[2].secs >= 880);
+  // Thursday: at the limit a half-done pair is completed on the other side
+  await day(2026, 10, 19); await act('start'); await act('skip'); assert.ok((await txt('#side')).startsWith('Right')); await hit(); await hit();
+  await pg.clock.runFor(905000); assert.ok((await txt('#side')).startsWith('Left') && (await txt('#tap')).includes('Target 2'), 'other side owed after the limit'); await hit(); await hit(); await pg.clock.runFor(3000);
+  assert.ok((await txt('#app')).includes('How did it feel')); await pg.click('[data-x=ok]'); s = await state();
+  assert.deepStrictEqual(s.log[3].sets.map(x => x.side + x.done), ['R2', 'L2']); assert.ok(s.log[3].secs < 960);
+  // Saturday: finishing early in the middle of a pair asks for the other side first
+  await day(2026, 10, 21); await act('start'); await act('skip'); await hit(); await hit(); await hit(); await act('finish'); assert.ok((await txt('#tap')).includes('Target 3'));
+  await act('finish'); assert.ok((await txt('#app')).includes('Work done')); await pg.click('[data-x=ok]');
   // run screen: Galloway intervals follow the pace, the timed 1.6 km sets the pace, the timer runs on the Android side
   await pg.click('[data-x=run]'); assert.strictEqual(await txt('#r_pace'), '7:00'); assert.strictEqual(await txt('#r_run'), '1:00');
-  await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); await pg.click('[data-x="pace,-1"]'); assert.strictEqual(await txt('#r_pace'), '6:00'); assert.strictEqual(await txt('#r_run'), '1:30');
+  for (let i = 0; i < 4; i++) await pg.click('[data-x="pace,-1"]'); assert.strictEqual(await txt('#r_pace'), '6:00'); assert.strictEqual(await txt('#r_run'), '1:30');
   await pg.fill('#mm', '8:00'); await act('rmile'); assert.strictEqual(await txt('#r_pace'), '7:40'); assert.strictEqual(await txt('#r_run'), '0:30');
   await pg.click('[data-x="run,1"]'); assert.strictEqual(await txt('#r_run'), '0:35'); await act('rreset'); assert.strictEqual(await txt('#r_run'), '0:30');
-  await pg.click('[data-x="mins,-1"]'); await pg.screenshot({ path: shot('ui_run.png') }); await act('runStart');
-  assert.strictEqual(await txt('#ex'), 'walk'); assert.strictEqual(await txt('#num'), '0:13'); assert.ok((await txt('#rtot')).includes('5:00 of 25:00')); await pg.screenshot({ path: shot('ui_running.png') });
-  await act('runStop'); assert.ok(await pg.$('[data-a=runStart]')); assert.ok((await pg.evaluate('__c')).includes('run:30,30,1500')); assert.strictEqual(await pg.evaluate('back()'), true);
-  // setup screen
-  await pg.click('[data-x=settings]'); await pg.uncheck('[data-p=sensor]'); await pg.screenshot({ path: shot('ui_setup2.png') }); await act('saveSet'); s = await state(); assert.strictEqual(s.prefs.sensor, false);
+  await pg.click('[data-x="mins,-1"]'); await pg.check('#loud'); assert.strictEqual((await state()).prefs.loud, true); await pg.screenshot({ path: shot('ui_run.png') });
+  await act('rtest'); assert.ok((await pg.evaluate('__c')).includes('run:3,3,6,true')); await act('runStop'); await pg.uncheck('#loud'); assert.strictEqual((await state()).prefs.loud, false);
+  await act('runStart'); assert.strictEqual(await txt('#ex'), 'walk'); assert.strictEqual(await txt('#num'), '0:13'); assert.ok((await txt('#rtot')).includes('5:00 of 25:00')); await pg.screenshot({ path: shot('ui_running.png') });
+  await act('runStop'); assert.ok(await pg.$('[data-a=runStart]')); assert.ok((await pg.evaluate('__c')).includes('run:30,30,1500,false')); assert.strictEqual(await pg.evaluate('back()'), true);
+  // setup: choices apply at once and keep typed capacities; rounds stay even and inside the time limit
+  await pg.click('[data-x=settings]'); await pg.fill('#c_std', '25'); await pg.click('[data-x="count,both"]'); await pg.click('[data-x="sens,normal"]'); await pg.click('[data-x="rounds,6"]');
+  assert.strictEqual(await pg.inputValue('#c_std'), '25'); await pg.screenshot({ path: shot('ui_setup2.png') }); await act('saveSet'); s = await state();
+  assert.deepStrictEqual([s.prefs.count, s.prefs.sens, s.prefs.rounds, s.cap.std], ['both', 'normal', 6, 25]);
+  const rounds = +(/(\d) rounds/.exec(await txt('#app'))[1]); assert.ok(rounds % 2 === 0 && rounds >= 4, 'rounds ' + rounds);
+  // both: a nose touch counted this approach is not counted again by the sensor; the sensor alone still counts
+  await day(2026, 10, 23); await act('start'); await act('skip'); assert.ok(await pg.$('#tap.pad'));
+  await pg.evaluate('onProx(true)'); await pg.clock.runFor(200); await touch(); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '1');
+  await pg.evaluate('onProx(true)'); await pg.clock.runFor(400); await pg.evaluate('onProx(false)'); await pg.clock.runFor(700); assert.strictEqual(await txt('#num'), '2');
+  await act('finish');
   const calls = await pg.evaluate('__c'), fits = await pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth');
   assert.ok(fits && !errs.length, 'layout or script errors: ' + errs); assert.ok(calls.includes('prox:true') && calls.includes('keepOn:true') && calls.includes('keepOn:false'));
   console.log('UI PASS'); await b.close();
