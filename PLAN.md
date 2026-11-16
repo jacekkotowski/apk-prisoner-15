@@ -16,6 +16,11 @@ Spoken cues in Strength: 3, 2, 1 at the end of the warm-up; on each set the roun
 
 Cue wording is ours, from general knowledge of the book's techniques, not checked against the book.
 
+## Open now
+
+1. **Release on GitHub:** add the secrets `KEYSTORE_B64` and `KS_PASS` (README, section Releases), then run the Release workflow with version 0.8.0 (the first run on 2026-11-16 stopped at the missing secrets). After that every build is released by pushing a tag.
+2. **Phone test of everything since v0.3.0:** nose pad, workout voice and 3-2-1, loud run cues, a full run with the screen off, walking and running detection (threshold 135 steps per minute is a guess), the reminder and its missed-day text, backup file picker, path steps and ladders. What breaks decides the next build.
+
 ## Later, only if the owner asks
 
 - 5 km goal on the Run tab; GPS distance and pace (adds the location permission; the steps estimate is what exists now).
