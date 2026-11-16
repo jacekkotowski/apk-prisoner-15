@@ -1,0 +1,100 @@
+name: Release
+
+# Builds, signs and publishes the APK as a GitHub Release.
+# Runs when a tag like v0.8.0 is pushed, or by hand from the Actions tab (Run workflow, give the version, for example 0.8.0).
+# Needs two repository secrets: KEYSTORE_B64 (the keystore file, base64) and KS_PASS (its password). See README.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example 0.8.0 (must equal versionName in app/AndroidManifest.xml)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_SHA256: 8be0199b1c6af26849f1ff522e616a053ca1130c10253df85f139327a8b781cf
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then VER="${INPUT_VERSION#v}"; else VER="${GITHUB_REF_NAME#v}"; fi
+          echo "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::Version '$VER' is not like 0.8.0"; exit 1; }
+          MAN=$(grep -o 'android:versionName="[^"]*"' app/AndroidManifest.xml | cut -d'"' -f2)
+          [ "$VER" = "$MAN" ] || { echo "::error::Release $VER does not match versionName $MAN in app/AndroidManifest.xml"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KS_PASS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KS_PASS" ]; then
+            echo "::error::Add the repository secrets KEYSTORE_B64 and KS_PASS first (README.md, section Releases)."; exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > prisoner15.keystore
+          printf 'KS_FILE=prisoner15.keystore\nKS_PASS=%s\n' "$KS_PASS" > signing.env
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Tests
+        run: |
+          node tests/engine.test.js
+          bash tests/java.sh
+
+      - name: Android SDK
+        run: |
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          SDKM="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "build-tools;36.0.0" "platforms;android-36" > /dev/null
+
+      - name: Build and check
+        run: |
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          ./build.sh
+          GOT=$("$BT/apksigner" verify --print-certs Prisoner15.apk | grep 'SHA-256 digest' | head -1 | awk '{print $NF}')
+          [ "$GOT" = "$EXPECTED_SHA256" ] || { echo "::error::The APK is signed with the wrong key ($GOT)"; exit 1; }
+          GOTV=$("$BT/aapt2" dump badging Prisoner15.apk | sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p")
+          [ "$GOTV" = "$VER" ] || { echo "::error::The APK says version $GOTV, expected $VER"; exit 1; }
+          cp Prisoner15.apk "Prisoner15-$VER.apk"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$VER"
+          {
+            if [ -f "docs/releases/$TAG.md" ]; then cat "docs/releases/$TAG.md"; else echo "Built from $TAG by GitHub Actions."; fi
+            echo
+            echo "Signed with the Prisoner 15 key (certificate SHA-256 $EXPECTED_SHA256), so it installs over earlier builds."
+            echo
+            echo "APK SHA-256: $(sha256sum "Prisoner15-$VER.apk" | cut -d' ' -f1)"
+          } > notes.md
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "Prisoner15-$VER.apk" --clobber
+          else
+            gh release create "$TAG" "Prisoner15-$VER.apk" --target "$GITHUB_SHA" --title "Prisoner 15 $VER" --notes-file notes.md
+          fi
+
+      - name: Remove the key from the runner
+        if: always()
+        run: rm -f prisoner15.keystore signing.env

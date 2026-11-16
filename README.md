@@ -18,6 +18,17 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 
 - Path screen: six steps from the uneven push-up to the one-arm push-up, and from the Bulgarian split squat to the pistol. You move up by choice once the capacity reaches 10; the capacity then restarts at half. Setup can switch the light days to 1-2-3 ladders.
 
+## Releases
+
+Every build is published as a GitHub Release with the signed APK attached. It is automatic: pushing a tag like `v0.8.0` (equal to `versionName` in `app/AndroidManifest.xml`) runs `.github/workflows/release.yml`, which runs the engine and cadence tests, builds, checks the signing key and version, and publishes the release. Release notes come from `docs/releases/vX.Y.Z.md`.
+
+One-time setup, in the repository's Settings, Secrets and variables, Actions, New repository secret:
+
+- `KEYSTORE_B64`: the keystore file from the private `apk-signing-keys` repository (`apk-prisoner-15/prisoner15.keystore`) as base64. On Linux or macOS: `base64 -w0 prisoner15.keystore` (macOS: `base64 -i prisoner15.keystore`). On Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("prisoner15.keystore"))`.
+- `KS_PASS`: the value after `KS_PASS=` in `apk-prisoner-15/signing.env` in the same repository.
+
+To release without pushing a tag: Actions tab, Release, Run workflow, enter the version (for example `0.8.0`).
+
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.
