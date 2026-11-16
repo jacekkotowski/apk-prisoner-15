@@ -2,11 +2,11 @@
 
 For a stressed person who used to be fit. The aim is that he keeps coming back: the app shows the comeback, forgives a missed day, and never becomes one more demand.
 
-## Status: v0.6.0
+## Status: v0.7.0
 
-Done: Strength tab (push-ups and squats, weekly variations, even rounds, equal sides, nose pad, 15-minute cap, progression, morning reminder), Run tab (Galloway run/walk steps, spoken timer with the screen off, loud cues, flexible length, run log), Record, the v0.6 workout voice, and the v0.5 "Comeback" set: comeback line (first capacity to today's), test day every four weeks (offered, replaces that day's session, open sets, equal sides, sets the capacities), never miss twice (after a missed day the home screen preselects the short session and the reminder text changes), Sunday weekly sentence, 7/30/100-day milestones, backup to and from a file.
+Done: Strength tab (push-ups and squats, weekly variations, even rounds, equal sides, nose pad, 15-minute cap, progression, morning reminder), Run tab (Galloway run/walk steps, spoken timer with the screen off, loud cues, flexible length, run log), Record, the v0.7 walking and running detection (optional step sensor: cadence on the run screen, one warning if you keep running 12 seconds into a walk break, steps and an estimated distance in the log), the v0.6 workout voice, and the v0.5 "Comeback" set: comeback line (first capacity to today's), test day every four weeks (offered, replaces that day's session, open sets, equal sides, sets the capacities), never miss twice (after a missed day the home screen preselects the short session and the reminder text changes), Sunday weekly sentence, 7/30/100-day milestones, backup to and from a file.
 
-Not yet confirmed on a phone: the workout voice and the 3-2-1, nose pad (v0.3.0), loud cues, a full run with the screen off, the reminder and its missed-day text, the backup file picker.
+Not yet confirmed on a phone: the step detection and its running threshold (135 steps/min is a guess), the workout voice and the 3-2-1, nose pad (v0.3.0), loud cues, a full run with the screen off, the reminder and its missed-day text, the backup file picker.
 
 Notes: test day treats the stopped set (form slows, not failure) as the new capacity; targets stay a fraction of it. The comeback line starts from the first capacities stored, or from the capacities at the time of the v0.5 update for older histories.
 
@@ -19,7 +19,7 @@ Cue wording is ours, from general knowledge of the book's techniques, not checke
 ## Later, only if the owner asks
 
 - Path toward the one-arm push-up and the pistol; 1-2-3 ladder mode on uneven days.
-- 5 km goal on the Run tab; distance and walking/running detection from the step sensor or GPS (adds permissions).
+- 5 km goal on the Run tab; GPS distance and pace (adds the location permission; the steps estimate is what exists now).
 - Camera squat counting.
 
 ## Not planned

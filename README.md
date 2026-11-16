@@ -14,6 +14,8 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 
 - Workout voice: counts 3, 2, 1 into the first set, announces round, exercise, side and target, and gives one short tension cue; Setup can switch it off.
 
+- Optional walking and running detection (Run tab): the step sensor shows your steps per minute, warns once if you are still running 12 seconds into a walk break, and logs steps with an estimated distance. It asks for the physical-activity permission only when switched on.
+
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.

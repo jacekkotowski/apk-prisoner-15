@@ -2,7 +2,7 @@
 // Run: node tests/ui.js [output folder]. Needs Playwright for Node.
 const { chromium } = require('playwright'); const path = require('path'), assert = require('assert');
 const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={hasProx:()=>true,prox:on=>__c.push('prox:'+on),cue:k=>__c.push('cue:'+k),keepOn:on=>__c.push('keepOn:'+on),
- runStart:(r,w,t,l)=>{__c.push('run:'+r+','+w+','+t+','+l);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
+ hasSteps:()=>true,askSteps:()=>__c.push('askSteps'),runStart:(r,w,t,l,d)=>{__c.push('run:'+r+','+w+','+t+','+l+','+d);window.__run={on:true,phase:'walk',left:12.2,elapsed:300,total:t}},runStop:()=>{__c.push('runStop');window.__run=null},runState:()=>JSON.stringify(window.__run||{on:false}),
  setLastDone:d=>__c.push('last:'+d),say:t=>__c.push('say:'+t),exportData:j=>{__c.push('export');window.__exp=j},importData:()=>__c.push('import'),
  getReminder:()=>JSON.stringify(__rem),setReminder:(on,h,m)=>{__rem={on,h,m};__c.push('rem:'+on+','+h+','+m)}};`;
 (async () => {
@@ -75,18 +75,25 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   await pg.fill('#mm', '8:00'); await act('rmile'); assert.strictEqual(await txt('#r_pace'), '7:40'); assert.strictEqual(await txt('#r_run'), '0:30');
   await pg.click('[data-x="run,1"]'); assert.strictEqual(await txt('#r_run'), '0:35'); await act('rreset'); assert.strictEqual(await txt('#r_run'), '0:30');
   await pg.click('[data-x="mins,-1"]'); await pg.check('#loud'); assert.strictEqual((await state()).prefs.loud, true); await pg.screenshot({ path: shot('ui_run.png') });
-  await act('rtest'); assert.ok((await pg.evaluate('__c')).includes('run:3,3,6,true')); await pg.evaluate('window.__run=null'); await pg.clock.runFor(500); await pg.uncheck('#loud');
+  await act('rtest'); assert.ok((await pg.evaluate('__c')).includes('run:3,3,6,true,false')); await pg.evaluate('window.__run=null'); await pg.clock.runFor(500); await pg.uncheck('#loud');
   await act('runStart'); assert.strictEqual(await txt('#ex'), 'walk'); assert.strictEqual(await txt('#num'), '0:13'); assert.ok((await txt('#rtot')).includes('5:00 of 25:00')); await pg.screenshot({ path: shot('ui_running.png') });
   await pg.evaluate('__run.elapsed=1700'); await pg.clock.runFor(500); assert.ok((await txt('#rtot')).includes('target reached'));
   // stopping after 28 minutes: a done run; the app asks how it felt; two comfortable done runs step up
   await act('runStop'); assert.ok((await txt('#app')).includes('Run done')); await pg.screenshot({ path: shot('ui_rundone.png') }); await pg.click('[data-x=ok]');
-  assert.strictEqual(await txt('#advice'), 'Run logged.'); assert.ok((await pg.evaluate('__c')).includes('run:30,30,1500,false'));
+  assert.strictEqual(await txt('#advice'), 'Run logged.'); assert.ok((await pg.evaluate('__c')).includes('run:30,30,1500,false,false'));
   await act('runStart'); await pg.evaluate('__run.elapsed=1250'); await act('runStop'); await pg.click('[data-x=easy]');
   assert.ok((await txt('#advice')).startsWith('Step up')); assert.strictEqual(await txt('#r_run'), '0:45');
+  // walking and running detection: asks for the permission once, refused means off, a run with detection shows cadence and logs steps and an estimated distance
+  assert.ok(await pg.isVisible('#detect')); await pg.check('#detect'); assert.ok((await pg.evaluate('__c')).includes('askSteps')); assert.strictEqual((await state()).prefs.detect, true);
+  await pg.evaluate('onSteps(false)'); assert.strictEqual((await state()).prefs.detect, false); assert.ok((await txt('#advice')).includes('Permission refused')); assert.ok(!(await pg.isChecked('#detect')));
+  await pg.check('#detect'); await pg.evaluate('onSteps(true)'); assert.strictEqual((await state()).prefs.detect, true);
+  await act('runStart'); assert.ok((await pg.evaluate('__c')).includes('run:45,30,1500,false,true'));
+  await pg.evaluate("Object.assign(__run, { det: true, cad: 152, mv: 'run', steps: 2400, rs: 1500, ws: 900, elapsed: 1500 })"); await pg.clock.runFor(500); assert.strictEqual(await txt('#rmv'), '152 steps/min · running');
+  await act('runStop'); assert.ok((await txt('#app')).includes('2400 steps · about 2.1 km')); await pg.click('[data-x=ok]'); await pg.uncheck('#detect');
   // a 10-minute run is logged as short and moves nothing; a run under a minute is not logged; the app reopened on a pending run asks again
   await act('runStart'); await pg.evaluate('__run.elapsed=600'); await act('runStop'); assert.ok((await txt('#app')).includes('Short run')); await pg.reload(); assert.ok((await txt('#app')).includes('Short run')); await pg.click('[data-x=hard]');
   assert.strictEqual(await txt('#r_run'), '0:45'); await act('runStart'); await pg.evaluate('__run.elapsed=20'); await act('runStop'); assert.ok(await pg.$('[data-a=runStart]'));
-  s = await state(); assert.deepStrictEqual(s.runs.map(r => [r.secs, r.done, r.feel]), [[1700, true, 'ok'], [1250, true, 'easy'], [600, false, 'hard']]);
+  s = await state(); assert.deepStrictEqual(s.runs.map(r => [r.secs, r.done, r.feel, r.steps]), [[1700, true, 'ok', 0], [1250, true, 'easy', 0], [1500, true, 'ok', 2400], [600, false, 'hard', 0]]);
   await pg.click('[data-x=stats]'); assert.ok((await txt('#app')).includes('28:20') && (await txt('#app')).includes('hard, short')); await pg.screenshot({ path: shot('ui_record2.png') }); await pg.click('[data-x=home]');
   await day(2026, 10, 22); await pg.click('[data-x=run]'); assert.ok((await txt('#advice')).startsWith('Ran yesterday'));
   await day(2026, 10, 23); await pg.click('[data-x=run]'); assert.strictEqual(await txt('#advice'), 'Run day.'); assert.strictEqual(await pg.evaluate('back()'), true);

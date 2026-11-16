@@ -75,7 +75,7 @@ const rs = P.newState(); rs.run = { pace: 420, mins: 30, custom: false, level: P
 assert.strictEqual(rs.run.run, 60); assert.strictEqual(P.levelFor(460), 1); assert.strictEqual(P.runAdvice(rs, day(1)), 'First run: any day.');
 const runOf = (secs, feel, extra) => Object.assign({ date: P.dateKey(day(1)), secs, run: rs.run.run, walk: rs.run.walk, level: rs.run.level, custom: false, feel }, extra);
 assert.deepStrictEqual(P.finishRun(rs, runOf(600, 'easy')), { done: false, change: 0 });
-P.finishRun(rs, runOf(1250, 'ok', { custom: true })); P.finishRun(rs, runOf(2400, 'ok')); assert.strictEqual(rs.run.level, 3);
+P.finishRun(rs, runOf(1250, 'ok', { custom: true, steps: 2400, km: 2.1 })); assert.deepStrictEqual([rs.runs[1].steps, rs.runs[1].km, rs.runs[0].steps], [2400, 2.1, 0]); P.finishRun(rs, runOf(2400, 'ok')); assert.strictEqual(rs.run.level, 3);
 assert.deepStrictEqual(P.finishRun(rs, runOf(1200, 'easy')), { done: true, change: 1 }); assert.deepStrictEqual([rs.run.run, rs.run.walk], [90, 30]);
 P.finishRun(rs, runOf(1500, 'hard')); P.finishRun(rs, runOf(1500, 'hard')); assert.strictEqual(rs.run.level, 3);
 assert.strictEqual(rs.runs.length, 6); assert.ok(!rs.runs[0].done && rs.runs[2].done);

@@ -53,7 +53,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <script src="engine.js"></script>
 <script>
 const P = P15, app = document.getElementById('app');
-const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {}, say() {} };
+const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {}, say() {}, hasSteps: () => false, askSteps() {} };
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
@@ -183,7 +183,7 @@ const views = {
     <div class="days">${st.week.map(d => `<span class="${d.today ? 't' : ''}">${DAYS[d.dow].slice(0, 2)}</span>`).join('')}</div></div>
     <div class="mute sm">Left / right balance: ${tot ? `${st.side.L} / ${st.side.R} repetitions` : 'no one-sided sets yet'}</div>
     <table><tr><th>Exercise</th><th class="n">Best clean set</th><th class="n">Capacity</th></tr>${best}</table>
-    <table><tr><th>Run</th><th>Run/walk</th><th>Feel</th><th class="n">Time</th></tr>${(S.runs || []).slice(-10).reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${P.mmss(r.run)} / ${P.mmss(r.walk)}</td><td>${r.feel}${r.done ? '' : ', short'}</td><td class="n">${fmt(r.secs)}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">No runs yet.</td></tr>'}</table>
+    <table><tr><th>Run</th><th>Run/walk</th><th>Feel</th><th class="n">Time</th></tr>${(S.runs || []).slice(-10).reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${P.mmss(r.run)} / ${P.mmss(r.walk)}</td><td>${r.feel}${r.done ? '' : ', short'}</td><td class="n">${fmt(r.secs)}${r.km ? ' · ' + r.km.toFixed(1) + ' km' : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">No runs yet.</td></tr>'}</table>
     <table><tr><th>Day</th><th>Energy</th><th class="n">Push</th><th class="n">Squat</th><th class="n">Time</th></tr>${log || '<tr><td colspan="5" class="mute">Nothing yet.</td></tr>'}</table></div>`;
   },
 
@@ -191,7 +191,7 @@ const views = {
     const r = runCfg(), st = JSON.parse(A.runState());
     if (st.on) return `<div class="row sp"><h1>RUN · WALK · RUN</h1><span class="up sm mute">${P.mmss(r.run)} / ${P.mmss(r.walk)}</span></div>
     <div id="bar"><i></i></div>
-    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute sm" style="margin-top:14px">Run as long as you like. 20 minutes counts as a run. Cues keep going with the screen off; your music keeps playing.</div></div>
+    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute" id="rmv" style="margin-top:6px"></div><div class="mute sm" style="margin-top:14px">Run as long as you like. 20 minutes counts as a run. Cues keep going with the screen off; your music keeps playing.</div></div>
     <button data-a="runStop" style="padding:20px">Stop</button>`;
     const pm = (k, t, v) => `<div class="f"><span>${t}</span><span class="row"><button data-a="rset" data-x="${k},-1" aria-label="less">−</button><b class="val" id="r_${k}">${v}</b><button data-a="rset" data-x="${k},1" aria-label="more">+</button></span></div>`;
     return `<div class="row sp"><h1>RUN · WALK · RUN</h1><button class="link" data-a="go" data-x="stats">Record</button></div>
@@ -199,6 +199,7 @@ const views = {
     <div class="mute sm">Galloway: walk breaks from the first minute. Easy pace, you can talk. ${r.custom ? 'Your own run/walk.' : `Step ${r.level + 1} of ${P.LADDER.length}: two comfortable runs of 20+ minutes move you up.`}</div></div>
     <div class="grow scroll">${pm('run', 'Run', P.mmss(r.run))}${pm('walk', 'Walk', P.mmss(r.walk))}${pm('mins', 'Target minutes', r.mins)}
     <label class="f"><span>Loud cues<br><span class="mute sm">alarm volume, for wind and traffic</span></span><span class="row"><input type="checkbox" id="loud" data-a="loud" ${S.prefs.loud ? 'checked' : ''}><button data-a="rtest">Test</button></span></label>
+    ${A.hasSteps() ? `<label class="f"><span>Detect walking and running<br><span class="mute sm">warns if you keep running in a walk break; logs steps</span></span><input type="checkbox" id="detect" data-a="detect" ${S.prefs.detect ? 'checked' : ''}></label>` : ''}
     ${pm('pace', 'Easy pace per km', P.mmss(r.pace))}
     <label class="f"><span>or timed 1.6 km<br><span class="mute sm">pace sets the starting step</span></span><span class="row"><input id="mm" inputmode="numeric" placeholder="8:30" style="width:86px"><button data-a="rmile">Set</button></span></label>
     <div class="mute sm" style="padding-top:8px">About ${(r.mins * 60 / r.pace).toFixed(1)} km in ${r.mins} minutes at this pace. ${r.custom ? '<button class="link" data-a="rreset">Back to the plan</button>' : ''}</div></div>
@@ -207,7 +208,7 @@ const views = {
 
   runDone: () => { const p = S.pendingRun; return `<h1>RUN · WALK · RUN</h1><div class="day">${p.secs >= P.RUN_DONE ? 'Run done' : 'Short run'}</div>
     <div class="stat"><div><b>${fmt(p.secs)}</b><span class="mute sm up">time</span></div><div><b>${P.mmss(p.run)}</b><span class="mute sm up">run</span></div><div><b>${P.mmss(p.walk)}</b><span class="mute sm up">walk</span></div></div>
-    <div class="mute">${p.secs >= P.RUN_DONE ? 'Counts as a run.' : 'Logged. 20 minutes or more counts as a run.'}</div>
+    <div class="mute">${p.secs >= P.RUN_DONE ? 'Counts as a run.' : 'Logged. 20 minutes or more counts as a run.'}</div>${p.steps ? `<div class="mute sm">${p.steps} steps · about ${p.km.toFixed(1)} km (an estimate from steps)</div>` : ''}
     <div class="grow"></div><div class="up sm mute">How did it feel?</div>
     <div class="seg">${['easy', 'ok', 'hard'].map(f => `<button data-a="runFeel" data-x="${f}" style="padding:22px 0;font-size:18px">${f}</button>`).join('')}</div>
     <button class="link" data-a="runDiscard">Discard this run</button>`; },
@@ -241,6 +242,7 @@ function paintRun() {
   document.getElementById('num').textContent = fmt(st.left); document.getElementById('num').style.fontSize = '34vw';
   document.getElementById('rtot').textContent = fmt(st.elapsed) + (st.elapsed < st.total ? ' of ' + fmt(st.total) : ' · target reached, go on or stop');
   document.querySelector('#bar i').style.width = Math.min(100, 100 * st.elapsed / st.total) + '%';
+  const mv = document.getElementById('rmv'); if (mv) mv.textContent = st.det ? `${st.cad} steps/min · ${{ run: 'running', walk: 'walking', still: 'still' }[st.mv] || ''}` : '';
 }
 function render() { if (!S.cap) view = 'setup'; else if (S.pendingRun && view !== 'runDone') view = 'runDone'; app.innerHTML = views[view](); if (view === 'work') paint(); if (view === 'run') paintRun(); }
 function paint() {
@@ -297,10 +299,10 @@ const acts = {
   },
   rmile() { const t = P.parseTime(document.getElementById('mm').value); if (!t) return; const r = runCfg(); r.pace = Math.min(780, Math.max(180, P.longRunPace(t))); r.custom = false; r.level = P.levelFor(r.pace); r.ok = r.hard = 0; save(); render(); },
   rreset() { runCfg().custom = false; save(); render(); },
-  runStart() { runNote = ''; const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud); render(); },
+  runStart() { runNote = ''; const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud, !!S.prefs.detect); render(); },
   runStop() {
     const st = JSON.parse(A.runState()), r = runCfg(); A.runStop();
-    if (st.on && st.elapsed >= 60) { S.pendingRun = { date: P.dateKey(new Date()), secs: st.elapsed, run: r.run, walk: r.walk, level: r.level, custom: r.custom }; save(); return go('runDone'); }
+    if (st.on && st.elapsed >= 60) { S.pendingRun = { date: P.dateKey(new Date()), secs: st.elapsed, run: r.run, walk: r.walk, level: r.level, custom: r.custom, steps: st.det ? st.steps : 0, km: st.det ? (st.rs * 1.0 + st.ws * 0.72) / 1000 : 0 }; save(); return go('runDone'); }
     render();
   },
   runFeel(f) {
@@ -320,7 +322,8 @@ const acts = {
   finish() { const st = cur(); if (!busy && st && counting(st) && st.side && cnt > 0 && !P.hasFirst(S.active, st)) return next(cnt); endWork(); },
   pref(x) { const [k, v] = x.split(','); grab(); S.prefs[k] = k === 'rounds' ? +v : v; save(); render(); },
   loud() { S.prefs.loud = document.getElementById('loud').checked; save(); },
-  rtest() { A.runStart(3, 3, 6, !!S.prefs.loud); render(); },
+  rtest() { A.runStart(3, 3, 6, !!S.prefs.loud, false); render(); },
+  detect() { const on = document.getElementById('detect').checked; S.prefs.detect = on; save(); if (on) A.askSteps(); },
   feel(x) {
     const r = P.finish(S, S.active, x); save(); syncLast(); energy = 'normal';
     note = r.changes.map(c => `${P.VAR[c.v].name}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
@@ -357,6 +360,7 @@ setInterval(() => {
 
 // Called by the Android side.
 window.onProx = near => { if (!det || paused) return; if (det.feed(!!near, Date.now())) rep(); else paint(); };
+window.onSteps = ok => { if (!ok) { S.prefs.detect = false; save(); runNote = 'Permission refused: detection is off.'; if (view === 'run') render(); } };
 window.onBackup = ok => { const m = document.getElementById('smsg'); if (m) m.textContent = ok ? 'Backup saved.' : 'That did not work.'; };
 window.onImport = text => {
   let o = null; try { o = JSON.parse(text); } catch (e) {}

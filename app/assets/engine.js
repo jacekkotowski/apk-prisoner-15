@@ -10,7 +10,7 @@
   const REST = 30, WARM = 60, LIMIT = 900, BUDGET = 810; // seconds; BUDGET leaves slack under the hard 15:00
 
   function newState() {
-    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, rounds: 4, count: 'touch', sens: 'high', loud: false } };
+    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, detect: false, rounds: 4, count: 'touch', sens: 'high', loud: false } };
   }
   function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function dayPlan(dow) { // 0 = Sunday
@@ -157,7 +157,7 @@
   function levelFor(pace) { const g = galloway(pace).run; let i = 0; LADDER.forEach((x, k) => { if (x[0] <= g) i = k; }); return i; }
   function finishRun(state, r) {
     const R = state.run, done = r.secs >= RUN_DONE; let change = 0;
-    (state.runs = state.runs || []).push({ date: r.date, secs: Math.round(r.secs), run: r.run, walk: r.walk, feel: r.feel, done });
+    (state.runs = state.runs || []).push({ date: r.date, secs: Math.round(r.secs), run: r.run, walk: r.walk, feel: r.feel, done, steps: r.steps || 0, km: r.km || 0 });
     if (done && !r.custom && r.level === R.level) {
       if (r.feel === 'hard') { R.ok = 0; R.hard = (R.hard || 0) + 1; if (R.hard >= 2 && R.level > 0) { R.level--; R.hard = 0; change = -1; } }
       else { R.hard = 0; R.ok = (R.ok || 0) + 1; if (R.ok >= 2 && R.level < LADDER.length - 1) { R.level++; R.ok = 0; change = 1; } }
