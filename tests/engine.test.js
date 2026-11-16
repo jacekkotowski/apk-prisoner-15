@@ -99,4 +99,26 @@ rec(tsets[0], 27); rec(tsets[1], 35); rec(tsets[2], 9); assert.strictEqual(P.tar
 const tr = P.finishTest(ts, t); assert.deepStrictEqual([ts.cap.std, ts.cap.squat, ts.cap.uneven, ts.cap.bulg], [27, 35, 9, 8]);
 assert.ok(tr.changes.length === 3 && ts.testAt === P.dateKey(day(29)) && !P.testDue(ts, day(30)) && ts.log.length === 1 && ts.flip.uneven && !ts.flip.bulg);
 const t0 = P.buildTest(ts, day(60)); P.finishTest(ts, t0); assert.strictEqual(ts.log.length, 1);
+// paths: level 0 is the original variation; the next step opens at capacity 10 and halves the capacity; stepping back never makes it instantly ready
+const pt = st(fresh()); assert.deepStrictEqual([P.name(pt, 'uneven'), P.name(pt, 'bulg'), P.name(pt, 'std')], ['Uneven push-ups', 'Bulgarian split squats', 'Push-ups']);
+assert.ok(!P.ready(pt, 'uneven') && !P.ready(pt, 'std') && P.info(pt, 'bulg').side === 'leg in front'); assert.strictEqual(P.stepUp(pt, 'uneven', '2026-12-01'), false);
+pt.cap.uneven = 10; pt.best.uneven = 9; assert.ok(P.ready(pt, 'uneven')); assert.ok(P.stepUp(pt, 'uneven', '2026-12-01'));
+assert.deepStrictEqual([pt.path.uneven, pt.cap.uneven, pt.best.uneven, P.name(pt, 'uneven')], [1, 5, 0, 'Archer push-ups']); assert.strictEqual(pt.pathLog.length, 1);
+assert.strictEqual(P.buildSession(pt, day(2), 'normal').steps.find(q => q.v === 'uneven').sec, 3);
+assert.ok(P.stepBack(pt, 'uneven', '2026-12-02') && pt.path.uneven === 0 && pt.cap.uneven === 9 && !P.ready(pt, 'uneven') && !P.stepBack(pt, 'uneven', '2026-12-03'));
+for (let i = 0; i < 5; i++) { pt.cap.bulg = 10; assert.ok(P.stepUp(pt, 'bulg', '2026-12-10')); }
+assert.strictEqual(P.name(pt, 'bulg'), 'Pistols'); pt.cap.bulg = 40; assert.ok(!P.ready(pt, 'bulg') && !P.stepUp(pt, 'bulg', '2026-12-11'));
+P.PATH.uneven.concat(P.PATH.bulg).forEach(x => assert.ok(x.name && x.setup && x.side && x.say && x.sec > 0));
+// every level stays inside 15 minutes with even rounds, in both modes
+for (let lv = 0; lv < 6; lv++) for (const cap of [3, 10, 40, 150]) {
+  const q = st({ std: cap, uneven: cap, squat: cap, bulg: cap }); q.path = { uneven: lv, bulg: lv };
+  for (const mode of ['rounds', 'ladder']) { q.prefs.light = mode; const x = P.buildSession(q, day(2), 'normal'); assert.ok(P.estimate(x.steps) <= P.BUDGET && x.rounds % 2 === 0, `level ${lv} cap ${cap} ${mode}`); }
+}
+// 1-2-3 ladders: both sides on every rung with equal repetitions, only on the light days
+const ld = st(fresh()); ld.prefs.light = 'ladder'; s = P.buildSession(ld, day(2), 'normal');
+assert.deepStrictEqual(s.steps.filter(q => q.v === 'uneven' && q.round === 1).map(q => q.side + q.target), ['L1', 'R1', 'L2', 'R2', 'L3', 'R3']);
+assert.strictEqual(s.rounds, 4); assert.deepStrictEqual(s.ladder, { uneven: 3, bulg: 3 });
+assert.strictEqual(P.buildSession(ld, day(1), 'normal').ladder, null); assert.deepStrictEqual([1, 4, 5, 10, 15, 40].map(P.topRung), [1, 3, 3, 4, 5, 6]);
+const lsets = s.steps.filter(q => q.v === 'uneven' && q.round === 1); s.done.push({ v: 'uneven', side: 'L', target: 2, done: 2, round: 1, rung: 2 });
+assert.ok(P.hasFirst(s, lsets[3]) && P.target(s, lsets[3]) === 2 && !P.hasFirst(s, lsets[1]) && P.target(s, lsets[1]) === 1);
 console.log('ENGINE PASS');

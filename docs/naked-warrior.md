@@ -25,8 +25,8 @@ Summary below comes from secondary sources (StrongFirst articles, book summaries
 - One-sided exercises: equal repetitions on both sides, always in pairs.
 - No static back exercises. Absolute survival minimum. A session never exceeds 15 minutes.
 
-## Proposed for the app, waiting for the owner's choice
+## In the app
 
-1. One-line tension cue per set (hands crush the floor, glutes squeezed, sharp exhale on effort).
-2. Progression path toward the one-arm push-up and the pistol, with a "next step" when a variation gets easy.
-3. Optional 1-2-3 ladder mode on uneven days.
+1. (v0.6) One-line tension cue per set (hands crush the floor, glutes squeezed, sharp exhale on effort).
+2. (v0.8) Paths toward the one-arm push-up and the pistol, six steps each, with a "next step" when the capacity reaches 10. The steps are ours, from general training sources; they have not been checked against the book.
+3. (v0.8) Optional 1-2-3 ladders on the light days, both sides on every rung. The 1-2-3 rungs are from the general description of the method, not checked against the book.

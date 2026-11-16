@@ -16,6 +16,8 @@ A minimal, offline Android morning routine: push-ups and squats, never more than
 
 - Optional walking and running detection (Run tab): the step sensor shows your steps per minute, warns once if you are still running 12 seconds into a walk break, and logs steps with an estimated distance. It asks for the physical-activity permission only when switched on.
 
+- Path screen: six steps from the uneven push-up to the one-arm push-up, and from the Bulgarian split squat to the pistol. You move up by choice once the capacity reaches 10; the capacity then restarts at half. Setup can switch the light days to 1-2-3 ladders.
+
 ## Layout
 
 - `app/assets/engine.js`: the training plan, progression, repetition detector and statistics. Pure functions.

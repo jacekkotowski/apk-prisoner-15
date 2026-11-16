@@ -57,7 +57,7 @@ const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn(
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
-let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '', lastCount = 0;
+let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '', lastCount = 0, armStep = '';
 
 function load() {
   let s = null; try { s = JSON.parse(localStorage.getItem('p15')); } catch (e) {}
@@ -73,16 +73,16 @@ function save() { localStorage.setItem('p15', JSON.stringify(S)); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function cue(k) { A.cue(k, !!S.prefs.sound && !(k === 'step' && S.prefs.voice), !!S.prefs.vibe); } // the voice announces each new set, so its beep is dropped
 function say(t) { if (S.prefs.voice) A.say(t); }
-function go(v) { view = v; armed = false; render(); }
+function go(v) { view = v; armed = false; armStep = ''; render(); }
 function cur() { return S.active && S.active.steps[S.active.i]; }
 // One short tension cue per set, shown on screen and spoken once per exercise per session.
 const CUES = { std: 'Crush the floor. Glutes tight. Breathe out sharp.', uneven: 'Crush the floor. Glutes tight. Breathe out sharp.', squat: 'Spread the floor. Abs and glutes tight. Breathe out sharp.', bulg: 'Spread the floor. Abs and glutes tight. Breathe out sharp.' };
 // What the voice says when a step starts: round on the first set of a round, exercise, side, target; the second side is short.
 function phrase(st) {
   const ses = S.active; if (st.t === 'warm') return 'Warm up.'; if (st.t === 'rest') return 'Rest.';
-  const v = P.VAR[st.v], before = ses.steps.slice(0, ses.i), second = !!st.side && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round);
-  const sw = st.side ? (st.side === 'L' ? 'left ' : 'right ') + (st.v === 'uneven' ? 'hand' : 'leg') : '', n = want >= P.OPEN ? 'Until your form slows.' : `${want}.`;
-  if (second) return `${sw[0].toUpperCase() + sw.slice(1)}. ${n}`;
+  const v = P.info(S, st.v), before = ses.steps.slice(0, ses.i), second = !!st.side && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round && (x.rung || 0) === (st.rung || 0));
+  const sw = st.side ? (st.side === 'L' ? 'left ' : 'right ') + v.say : '', n = want >= P.OPEN ? 'Until your form slows.' : `${want}.`;
+  if (second || (st.rung > 1 && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round))) return `${sw[0].toUpperCase() + sw.slice(1)}. ${n}`;
   let t = (!ses.test && !before.some(x => x.t === 'set' && x.round === st.round) ? `Round ${st.round}. ` : '') + v.name + (sw ? ', ' + sw : '') + `. ${n}`;
   if (!before.some(x => x.t === 'set' && x.v === st.v)) t += ' ' + CUES[st.v];
   return t;
@@ -133,12 +133,13 @@ const views = {
     const now = new Date(), ses = P.buildSession(S, now, energy), st = P.stats(S, now), last = S.log[S.log.length - 1];
     const resume = S.active && S.active.date === P.dateKey(now);
     const seg = ['exhausted', 'normal', 'strong'].map(e => `<button data-a="energy" data-x="${e}" aria-pressed="${e === energy}">${e}</button>`).join('');
+    const setupTxt = [ses.push, ses.squat].map(v => P.info(S, v).setup).filter(Boolean).join(' '), rd = ['uneven', 'bulg'].filter(v => P.ready(S, v));
     const cb = P.comeback(S, [ses.push, ses.squat]), vd = P.verdict(S, now), ms = P.milestone(st.days), due = !resume && P.testDue(S, now);
-    const hint = note || (st.doneToday ? 'Served today.' : P.missed(S, now) ? 'Missed a day. Short one today: two easy rounds.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : '');
-    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
+    const hint = note || (st.doneToday ? 'Served today.' : P.missed(S, now) ? 'Missed a day. Short one today: two easy rounds.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : rd.length ? 'Next step ready: see Path.' : '');
+    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="path">Path</button><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
     <div><div class="day">${DAYS[ses.dow]}</div><div class="mute up sm">${KIND[ses.kind]} · ${ses.rounds} rounds · about ${Math.ceil(P.estimate(ses.steps) / 60)} min</div></div>
-    <div class="plan"><div class="row sp"><span>${P.VAR[ses.push].name}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.tp.join(' · ')}</b></div>
-    <div class="row sp"><span>${P.VAR[ses.squat].name}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ts.join(' · ')}</b></div>${cb ? `<div class="mute sm" id="cb" style="margin-top:6px">Since day 1: ${cb}</div>` : ''}</div>
+    <div class="plan"><div class="row sp"><span>${P.name(S, ses.push)}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.ladder ? 'ladders 1–' + ses.ladder[ses.push] : ses.tp.join(' · ')}</b></div>
+    <div class="row sp"><span>${P.name(S, ses.squat)}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ladder ? 'ladders 1–' + ses.ladder[ses.squat] : ses.ts.join(' · ')}</b></div>${setupTxt ? `<div class="mute sm" id="setup" style="margin-top:6px">${setupTxt}</div>` : ''}${cb ? `<div class="mute sm" id="cb" style="margin-top:6px">Since day 1: ${cb}</div>` : ''}</div>
     <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}${ms ? `<div class="mute sm" id="ms" style="margin-top:6px">${ms}</div>` : ''}</div>
     ${vd ? `<div class="sm" id="vd">${vd}</div>` : ''}<div class="acc sm" id="hint">${hint}</div>
     ${due ? '<button data-a="test" id="testb">Test day: find your numbers · replaces today</button>' : ''}
@@ -147,14 +148,14 @@ const views = {
   },
 
   work: () => {
-    const ses = S.active, st = cur(), set = st.t === 'set', v = set && P.VAR[st.v], cm = counting(st);
+    const ses = S.active, st = cur(), set = st.t === 'set', v = set && P.info(S, st.v), cm = counting(st);
     const nx = ses.steps.slice(ses.i + 1).find(x => x.t === 'set');
     const round = set ? st.round : nx ? nx.round : ses.rounds, open = set && want >= P.OPEN;
-    const side = set && st.side ? (st.side === 'L' ? 'Left ' : 'Right ') + v.sideWord : '';
+    const side = set && st.side ? (st.side === 'L' ? 'Left ' : 'Right ') + v.side : '';
     const pad = cm && touchOn();
     const sub = open ? (cm ? 'Clean reps until your form slows. Stop before failure.' + (det ? ' <i id="dot"></i>' : '') : 'Clean reps until your form slows. Set the number, tap done.') : set ? (cm ? `Target ${want}` + (det ? ' · sensor on <i id="dot"></i>' : '') : `Do ${want}, then tap done. Slow and clean.`)
-      : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.VAR[nx.v].name.toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
-    return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `Round ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
+      : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.name(S, nx.v).toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
+    return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `${ses.ladder ? 'Ladder' : 'Round'} ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
     <div id="bar"><i></i></div>
     <div id="tap"${pad ? ' class="pad" data-pad="1"' : ''}>${pad ? '<div class="padlab">NOSE ON THE PAD</div>' : ''}<div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div>${set ? `<div class="sm" id="tcue" style="color:var(--acc);margin-top:8px;padding:0 16px">${CUES[st.v]}</div>` : ''}</div>
     ${set ? `<div class="pm"><button data-a="minus" aria-label="one less">−</button><button id="doneb" data-a="done"></button><button data-a="plus" aria-label="one more">+</button></div>` : `<button data-a="skip" style="padding:20px">Skip ${st.t === 'warm' ? 'warm-up' : 'rest'}</button>`}
@@ -173,7 +174,7 @@ const views = {
 
   stats: () => {
     const st = P.stats(S, new Date()), max = Math.max(1, ...st.week.map(d => d.reps)), tot = st.side.L + st.side.R;
-    const best = Object.keys(P.VAR).map(k => `<tr><td>${P.VAR[k].name}</td><td class="n">${S.best[k] || '–'}</td><td class="n">${S.cap[k]}</td></tr>`).join('');
+    const best = Object.keys(P.VAR).map(k => `<tr><td>${P.name(S, k)}</td><td class="n">${S.best[k] || '–'}</td><td class="n">${S.cap[k]}</td></tr>`).join('');
     const log = S.log.slice(-14).reverse().map(e => `<tr><td>${e.date.slice(5)} ${DAYS[e.dow].slice(0, 3)}</td><td>${e.energy}${e.partial ? ', short' : ''}</td><td class="n">${P.reps(e, 'push')}</td><td class="n">${P.reps(e, 'squat')}</td><td class="n">${fmt(e.secs)}</td></tr>`).join('');
     return `<div class="row sp"><h1>RECORD</h1><button class="link" data-a="go" data-x="home">Back</button></div>
     <div class="grow scroll" style="display:flex;flex-direction:column;gap:14px">
@@ -213,12 +214,26 @@ const views = {
     <div class="seg">${['easy', 'ok', 'hard'].map(f => `<button data-a="runFeel" data-x="${f}" style="padding:22px 0;font-size:18px">${f}</button>`).join('')}</div>
     <button class="link" data-a="runDiscard">Discard this run</button>`; },
 
+  path: () => {
+    const block = (v, title) => {
+      const lv = P.level(S, v), L = P.PATH[v], rd = P.ready(S, v), c = S.cap[v];
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="mute sm up">${title}</div>
+      ${L.map((x, i) => `<div style="padding:3px 0;${i === lv ? 'color:var(--acc);font-weight:700' : i < lv ? 'color:var(--mute)' : ''}">${i < lv ? '✓ ' : i === lv ? '→ ' : '· '}${x.name}</div>`).join('')}
+      <div class="sm" style="margin-top:6px" id="ps_${v}">${L[lv].setup}</div>
+      <div class="mute sm" style="margin-top:6px">Capacity ${c} per side. ${lv >= L.length - 1 ? 'Top of the path.' : rd ? 'Ready for the next step.' : `The next step opens at ${P.GRAD}.`}</div>
+      <div class="row" style="margin-top:8px">${rd ? `<button data-a="stepUp" data-x="${v}" id="up_${v}">Take the next step</button>` : ''}${lv > 0 ? `<button class="link" data-a="stepBack" data-x="${v}">Step back</button>` : ''}</div></div>`;
+    };
+    return `<div class="row sp"><h1>PATH</h1><button class="link" data-a="go" data-x="home">Back</button></div>
+    <div class="grow scroll"><div class="mute sm">Two ladders toward the one-arm push-up and the pistol. You move up when you choose, once the capacity reaches ${P.GRAD}. The capacity then restarts at half so the new step begins easy. Never push through pain.</div>${block('uneven', 'Push-ups → one-arm push-up')}${block('bulg', 'Squats → pistol')}
+    <p class="mute sm">The steps are our own ladder from general training sources, not copied from the book.</p></div>`;
+  },
+
   settings: () => {
     const sg = (k, t, o) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="mute sm up" style="margin-bottom:6px">${t}</div><div class="seg">${o.map(([v, l]) => `<button data-a="pref" data-x="${k},${v}" aria-pressed="${S.prefs[k] === v}">${l}</button>`).join('')}</div></div>`;
     const c = (k, t) => `<label class="f"><span>${t}</span><input type="checkbox" data-p="${k}" ${S.prefs[k] ? 'checked' : ''}></label>`;
     return `<div class="row sp"><h1>SETUP</h1><button class="link" data-a="saveSet">Save</button></div>
     <div class="grow scroll"><div class="mute sm up" style="margin-top:6px">Capacity: clean reps in one set</div>${capForm()}${remForm()}
-    ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
+    ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}${sg('light', 'Light days (uneven, split squats)', [['rounds', 'Rounds'], ['ladder', '1-2-3 ladders']])}${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
     ${c('sound', 'Sound')}${c('vibe', 'Vibration')}${c('voice', 'Voice in workout')}
     <p class="mute sm">Touch: put the phone on the floor and touch the marked pad with your nose; each touch is one push-up. High counts every contact. ${A.hasProx() ? 'Sensor: top edge of the phone under your face.' : 'This phone reports no proximity sensor, so push-ups are counted by touch.'}</p>
     <div class="acc sm" id="smsg"></div>
@@ -261,7 +276,7 @@ function enter() {
 }
 function next(rec) {
   const ses = S.active, st = cur();
-  if (rec != null) ses.done.push({ v: st.v, side: st.side, target: want, done: rec, round: st.round });
+  if (rec != null) ses.done.push({ v: st.v, side: st.side, target: want, done: rec, round: st.round, rung: st.rung });
   ses.i++; save(); if (cur()) cue('step'); enter();
 }
 function rep() {
@@ -271,11 +286,11 @@ function rep() {
 }
 function endWork() {
   const ses = S.active, st = cur(); busy = false; A.prox(false); A.keepOn(false); paused = false;
-  if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round }); ses.i++; }
+  if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round, rung: st.rung }); ses.i++; }
   if (!ses.done.length) { S.active = null; save(); return go('home'); }
   if (ses.test) {
     const r = P.finishTest(S, ses); save(); syncLast(); cue('end'); say('Test done.'); energy = 'normal';
-    note = 'Test done. ' + r.changes.map(c => `${P.VAR[c.v].name} ${c.from} → ${c.to}.`).join(' '); return go('home');
+    note = 'Test done. ' + r.changes.map(c => `${P.name(S, c.v)} ${c.from} → ${c.to}.`).join(' '); return go('home');
   }
   save(); cue('end'); say('Done.'); go('done');
 }
@@ -284,6 +299,11 @@ function begin() { A.keepOn(true); paused = false; lastT = Date.now(); view = 'w
 const acts = {
   go, energy(x) { energy = x; note = ''; render(); },
   setup() { S.cap = readCaps(); S.cap0 = Object.assign({}, S.cap); S.testAt = P.dateKey(new Date()); saveRem(); save(); go('home'); },
+  stepUp(v) {
+    if (armStep !== 'u' + v) { armStep = 'u' + v; document.getElementById('up_' + v).textContent = 'Tap again to move up'; return; }
+    armStep = ''; P.stepUp(S, v, P.dateKey(new Date())); save(); go('path');
+  },
+  stepBack(v) { P.stepBack(S, v, P.dateKey(new Date())); save(); go('path'); },
   test() { note = ''; S.active = P.buildTest(S, new Date()); save(); begin(); },
   backup() { A.exportData(JSON.stringify(S)); },
   restore() { if (!armed) { armed = true; document.getElementById('restore').textContent = 'Tap again: replaces everything here'; return; } armed = false; A.importData(); },
@@ -326,7 +346,7 @@ const acts = {
   detect() { const on = document.getElementById('detect').checked; S.prefs.detect = on; save(); if (on) A.askSteps(); },
   feel(x) {
     const r = P.finish(S, S.active, x); save(); syncLast(); energy = 'normal';
-    note = r.changes.map(c => `${P.VAR[c.v].name}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
+    note = r.changes.map(c => `${P.name(S, c.v)}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
     go('home');
   },
 };
@@ -369,7 +389,7 @@ window.onImport = text => {
   energy = P.missed(S, new Date()) ? 'exhausted' : 'normal'; note = 'Backup loaded.'; go('home');
 };
 window.hold = () => { if (view === 'work' && !paused) { paused = true; save(); render(); } };
-window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings' || view === 'run') { go('home'); return true; } return false; };
+window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings' || view === 'run' || view === 'path') { go('home'); return true; } return false; };
 render();
 </script>
 </body>

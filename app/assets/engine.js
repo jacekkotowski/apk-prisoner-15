@@ -10,7 +10,7 @@
   const REST = 30, WARM = 60, LIMIT = 900, BUDGET = 810; // seconds; BUDGET leaves slack under the hard 15:00
 
   function newState() {
-    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, detect: false, rounds: 4, count: 'touch', sens: 'high', loud: false } };
+    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, detect: false, light: 'rounds', rounds: 4, count: 'touch', sens: 'high', loud: false } };
   }
   function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function dayPlan(dow) { // 0 = Sunday
@@ -26,11 +26,11 @@
     const wave = kind === 'moderate' && energy !== 'exhausted' && n >= 4;
     return Array.from({ length: n }, (_, i) => Math.max(1, Math.round(cap * f * (wave ? (i === 0 ? 1.07 : i === n - 1 ? 1.25 : 1) : 1))));
   }
-  function steps(plan, tp, ts, flip, rest, warm) {
+  function steps(plan, tp, ts, flip, rest, warm, sec) {
     const out = [{ t: 'warm', secs: warm }], n = tp.length;
     const add = (v, target, round) => {
-      if (VAR[v].sides === 1) out.push({ t: 'set', v, side: null, target, round });
-      else (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target, round }));
+      if (VAR[v].sides === 1) out.push({ t: 'set', v, side: null, target, round, sec: sec && sec[v] });
+      else (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target, round, sec: sec && sec[v] }));
     };
     for (let r = 0; r < n; r++) {
       add(plan.push, tp[r], r + 1); out.push({ t: 'rest', secs: rest });
@@ -38,23 +38,77 @@
     }
     return out;
   }
-  function estimate(st) { return st.reduce((s, x) => s + (x.t === 'set' ? x.target * VAR[x.v].sec + (x.side ? 6 : 0) : x.secs), 0); }
+  function estimate(st) { return st.reduce((s, x) => s + (x.t === 'set' ? x.target * (x.sec || VAR[x.v].sec) + (x.side ? 6 : 0) : x.secs), 0); }
+  // The one-arm push-up and pistol paths: six levels each for the two one-sided variations. Level 0 is the original variation.
+  // The ladder is ours, from general training sources; it is not copied from the book. Only floor, books, a chair or a low table are needed.
+  const PATH = {
+    uneven: [
+      { name: 'Uneven push-ups', side: 'hand on books', say: 'hand', sec: 2.5, setup: 'One hand on a low, stable, nonslip stack of books, the other on the floor. Alternate the raised hand.' },
+      { name: 'Archer push-ups', side: 'working arm', say: 'arm', sec: 3, setup: 'Hands wide. Bend one arm, keep the other straight and press lightly with its hand. Alternate sides.' },
+      { name: 'Archer push-ups, fingertips', side: 'working arm', say: 'arm', sec: 3.5, setup: 'As archer push-ups, but the straight arm touches the floor with its fingertips only.' },
+      { name: 'One-arm push-ups, high', side: 'working hand', say: 'hand', sec: 4, setup: 'Working hand on a sturdy, nonslip support about knee high (a stable chair seat against a wall, or a low table). Other hand behind your back, feet wide.' },
+      { name: 'One-arm push-ups, low', side: 'working hand', say: 'hand', sec: 4, setup: 'The same on a low support, such as a step or a stack of books. Feet wide.' },
+      { name: 'One-arm push-ups', side: 'working hand', say: 'hand', sec: 4.5, setup: 'Working hand on the floor, other hand behind your back, feet wide.' },
+    ],
+    bulg: [
+      { name: 'Bulgarian split squats', side: 'leg in front', say: 'leg', sec: 3, setup: 'Rear foot on a secure chair, the front leg works. Start shallow, with a lower support if needed.' },
+      { name: 'Deep Bulgarian split squats', side: 'leg in front', say: 'leg', sec: 3.5, setup: 'The same, down until the front thigh is level.' },
+      { name: 'Box pistols, high seat', side: 'working leg', say: 'leg', sec: 3.5, setup: 'Stand on one leg in front of a secure chair, free leg forward. Sit back onto the seat, stand up. A hand on a wall is fine.' },
+      { name: 'Box pistols, low seat', side: 'working leg', say: 'leg', sec: 4, setup: 'The same onto a lower seat.' },
+      { name: 'Assisted pistols', side: 'working leg', say: 'leg', sec: 4, setup: 'One leg, free leg forward, down as low as you can control with a light hand on a doorframe, and up.' },
+      { name: 'Pistols', side: 'working leg', say: 'leg', sec: 4.5, setup: 'One leg, free leg forward, down and up with no support.' },
+    ],
+  };
+  const GRAD = 10; // capacity per side at which the next step opens
+  function level(state, v) { return (state.path && state.path[v]) || 0; }
+  function info(state, v) { const p = PATH[v]; return p ? p[Math.min(level(state, v), p.length - 1)] : { name: VAR[v].name, side: null, say: null, sec: VAR[v].sec, setup: '' }; }
+  function name(state, v) { return info(state, v).name; }
+  function ready(state, v) { const p = PATH[v]; return !!p && level(state, v) < p.length - 1 && state.cap[v] >= GRAD; }
+  // Moving up is the owner's choice. The capacity restarts at half so the new step begins easy; the best set restarts too.
+  function stepUp(state, v, date) {
+    if (!ready(state, v)) return false;
+    const from = level(state, v), capFrom = state.cap[v]; state.path = state.path || {}; state.path[v] = from + 1;
+    state.cap[v] = Math.max(3, Math.round(capFrom / 2)); state.ok[v] = 0; state.hard[v] = 0; state.best[v] = 0;
+    (state.pathLog = state.pathLog || []).push({ date, v, from, to: from + 1, capFrom, capTo: state.cap[v] }); return true;
+  }
+  function stepBack(state, v, date) {
+    const from = level(state, v); if (!PATH[v] || from === 0) return false;
+    const capFrom = state.cap[v]; state.path[v] = from - 1;
+    state.cap[v] = Math.min(GRAD - 1, Math.max(capFrom, capFrom * 2)); state.ok[v] = 0; state.hard[v] = 0; state.best[v] = 0;
+    (state.pathLog = state.pathLog || []).push({ date, v, from, to: from - 1, capFrom, capTo: state.cap[v] }); return true;
+  }
+  // 1-2-3 ladders on the light days: each ladder is rungs of 1, 2, 3 ... repetitions, both sides on every rung, no rest between rungs. The top rung grows with capacity.
+  function topRung(c) { return c < 5 ? Math.max(1, Math.min(3, Math.round(c))) : Math.min(6, 3 + Math.floor((c - 5) / 5)); }
+  function ladderSteps(plan, n, top, flip, rest, warm, sec) {
+    const out = [{ t: 'warm', secs: warm }];
+    for (let r = 1; r <= n; r++) [plan.push, plan.squat].forEach((v, i) => {
+      for (let k = 1; k <= top[v]; k++) (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target: k, round: r, rung: k, sec: sec[v] }));
+      if (i === 0 || r < n) out.push({ t: 'rest', secs: rest });
+    });
+    return out;
+  }
   // Builds today's session. To fit the time budget it shortens the rests and the warm-up first, then drops two rounds, then lowers repetitions.
   function buildSession(state, date, energy) {
-    const dow = date.getDay(), plan = dayPlan(dow);
-    let n = rounds(plan.kind, energy, state.prefs && state.prefs.rounds), scale = 1, rest = REST, warm = WARM, st, tp, ts;
+    const dow = date.getDay(), plan = dayPlan(dow), pr = state.prefs || {}, ladder = plan.kind === 'light' && pr.light === 'ladder';
+    const sec = { [plan.push]: info(state, plan.push).sec, [plan.squat]: info(state, plan.squat).sec };
+    let n = rounds(plan.kind, energy, pr.rounds), scale = 1, rest = REST, warm = WARM, st, tp, ts, top = null;
     for (;;) {
-      tp = targets(state.cap[plan.push] * scale, plan.kind, energy, n); ts = targets(state.cap[plan.squat] * scale, plan.kind, energy, n);
-      st = steps(plan, tp, ts, state.flip, rest, warm);
+      if (ladder) {
+        top = { [plan.push]: topRung(state.cap[plan.push] * scale), [plan.squat]: topRung(state.cap[plan.squat] * scale) };
+        tp = [top[plan.push]]; ts = [top[plan.squat]]; st = ladderSteps(plan, n, top, state.flip, rest, warm, sec);
+      } else {
+        tp = targets(state.cap[plan.push] * scale, plan.kind, energy, n); ts = targets(state.cap[plan.squat] * scale, plan.kind, energy, n);
+        st = steps(plan, tp, ts, state.flip, rest, warm, sec);
+      }
       if (estimate(st) <= BUDGET) break;
       if (rest > 20) rest = 20; else if (warm > 30) warm = 30; else if (rest > 15) rest = 15;
       else if (n > 2) { n -= 2; rest = REST; warm = WARM; }
       else if (scale > 0.05) scale *= 0.9; else break;
     }
-    return { date: dateKey(date), dow, kind: plan.kind, push: plan.push, squat: plan.squat, energy, rounds: n, tp, ts, steps: st, i: 0, secs: 0, done: [] };
+    return { date: dateKey(date), dow, kind: plan.kind, push: plan.push, squat: plan.squat, energy, rounds: n, tp, ts, ladder: top, steps: st, i: 0, secs: 0, done: [] };
   }
   // One-sided exercises are always done in pairs with the same repetitions on both sides.
-  function firstSide(ses, st) { return st.side ? ses.done.find(d => d.v === st.v && d.round === st.round && d.side !== st.side && d.done > 0) : null; }
+  function firstSide(ses, st) { return st.side ? ses.done.find(d => d.v === st.v && d.round === st.round && (d.rung || 0) === (st.rung || 0) && d.side !== st.side && d.done > 0) : null; }
   function hasFirst(ses, st) { return !!firstSide(ses, st); }
   // Repetitions asked for in this set: the second side of a pair never asks for more than the first side did.
   function target(ses, st) { const f = firstSide(ses, st); return f ? Math.max(1, Math.min(st.target, f.done)) : st.target; }
@@ -172,6 +226,6 @@
     const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(y, m - 1, d)) / 864e5);
     return days <= 0 ? 'Ran today.' : days === 1 ? 'Ran yesterday. Every second day is enough; your call.' : 'Run day.';
   }
-  const api = { OPEN, daysBetween, comeback, testDue, buildTest, finishTest, missed, verdict, milestone, LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
+  const api = { PATH, GRAD, level, info, name, ready, stepUp, stepBack, topRung, OPEN, daysBetween, comeback, testDue, buildTest, finishTest, missed, verdict, milestone, LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);

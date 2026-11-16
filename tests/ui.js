@@ -128,6 +128,22 @@ const STUB = `window.__c=[];window.__rem={on:false,h:6,m:30};window.Android={has
   // voice off: nothing is spoken
   await pg.click('[data-x=settings]'); await pg.uncheck('[data-p=voice]'); await act('saveSet'); assert.strictEqual((await state()).prefs.voice, false);
   await act('start'); await act('skip'); assert.ok(!(await pg.evaluate('__c')).some(c => c.startsWith('say:'))); await act('finish');
+  // paths: the next step opens at capacity 10 and needs two taps; the capacity restarts at half; the work screen then shows the new variation
+  await pg.click('[data-x=settings]'); await pg.fill('#c_uneven', '10'); await act('saveSet'); await pg.click('[data-x=path]');
+  assert.ok((await txt('#app')).includes('Ready for the next step.') && await pg.isVisible('#up_uneven') && !(await pg.$('#up_bulg'))); await pg.screenshot({ path: shot('ui_path.png') });
+  await pg.click('#up_uneven'); assert.strictEqual((await state()).path, undefined); assert.ok((await txt('#up_uneven')).includes('Tap again')); await pg.click('#up_uneven');
+  s = await state(); assert.deepStrictEqual([s.path.uneven, s.cap.uneven, s.best.uneven], [1, 5, 0]); assert.ok((await txt('#ps_uneven')).includes('Hands wide'));
+  await day(2026, 11, 22); assert.ok((await txt('.plan')).includes('Archer push-ups') && (await txt('#setup')).includes('Hands wide')); await act('start'); await act('skip');
+  assert.strictEqual(await txt('#ex'), 'Archer push-ups'); assert.ok((await txt('#side')).includes('working arm')); await act('finish');
+  await pg.click('[data-x=path]'); await pg.click('[data-a=stepBack]'); s = await state(); assert.deepStrictEqual([s.path.uneven, s.cap.uneven], [0, 9]); assert.ok((await txt('#app')).includes('opens at 10'));
+  // 1-2-3 ladders on a light day: both sides on every rung, equal repetitions, the second side matches the first
+  await pg.click('[data-x=home]'); await pg.click('[data-x=settings]'); await pg.click('[data-x="light,ladder"]'); await act('saveSet'); assert.strictEqual((await state()).prefs.light, 'ladder');
+  await day(2026, 11, 22); assert.ok((await txt('.plan')).includes('ladders 1–3')); await act('start'); await act('skip'); assert.ok((await txt('#app')).includes('Ladder 1 /')); await pg.screenshot({ path: shot('ui_ladder.png') });
+  await slow(); await pg.clock.runFor(800); assert.ok((await txt('#tap')).includes('Target 1')); await slow(); await pg.clock.runFor(800); assert.ok((await txt('#tap')).includes('Target 2'));
+  await slow(); await slow(); await pg.clock.runFor(800); assert.ok((await txt('#tap')).includes('Target 2')); await slow(); await slow(); await pg.clock.runFor(800); assert.ok((await txt('#tap')).includes('Target 3'));
+  await act('finish'); assert.ok((await txt('#app')).includes('Work done')); await pg.click('[data-x=ok]'); s = await state(); const ls = s.log[s.log.length - 1].sets;
+  assert.deepStrictEqual(ls.map(x => x.rung + ':' + x.done), ['1:1', '1:1', '2:2', '2:2']); assert.ok(ls[0].side !== ls[1].side && ls[2].side !== ls[3].side && ls[0].side === ls[2].side);
+  await pg.click('[data-x=settings]'); await pg.click('[data-x="light,rounds"]'); await act('saveSet');
   // backup: saved through the Android side; a loaded file replaces the history only after a second tap, and junk is refused
   await pg.click('[data-x=settings]'); await act('backup'); const exp = JSON.parse(await pg.evaluate('__exp')); assert.strictEqual(exp.cap.std, 20);
   await pg.evaluate('onBackup(true)'); assert.strictEqual(await txt('#smsg'), 'Backup saved.'); await pg.screenshot({ path: shot('ui_setup3.png') });
