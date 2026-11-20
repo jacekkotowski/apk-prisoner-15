@@ -27,6 +27,8 @@ One-time setup, in the repository's Settings, Secrets and variables, Actions, Ne
 - `KEYSTORE_B64`: the keystore file from the private `apk-signing-keys` repository (`apk-prisoner-15/prisoner15.keystore`) as base64. On Linux or macOS: `base64 -w0 prisoner15.keystore` (macOS: `base64 -i prisoner15.keystore`). On Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("prisoner15.keystore"))`.
 - `KS_PASS`: the value after `KS_PASS=` in `apk-prisoner-15/signing.env` in the same repository.
 
+Phone-only alternative: one secret, `KEYS_TOKEN`, a fine-grained personal access token (github.com, Settings, Developer settings) with read-only Contents access to `jacekkotowski/apk-signing-keys`. The workflow then reads the keystore and password from that repository, so `KEYSTORE_B64` and `KS_PASS` are not needed.
+
 To release without pushing a tag: Actions tab, Release, Run workflow, enter the version (for example `0.8.0`).
 
 ## Layout

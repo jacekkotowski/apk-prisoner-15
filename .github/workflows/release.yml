@@ -38,12 +38,24 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.KS_PASS }}
+          KEYS_TOKEN: ${{ secrets.KEYS_TOKEN }}
         run: |
-          if [ -z "$KEYSTORE_B64" ] || [ -z "$KS_PASS" ]; then
-            echo "::error::Add the repository secrets KEYSTORE_B64 and KS_PASS first (README.md, section Releases)."; exit 1
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > prisoner15.keystore
+            printf 'KS_FILE=prisoner15.keystore\nKS_PASS=%s\n' "$KS_PASS" > signing.env
+          elif [ -n "$KEYS_TOKEN" ]; then
+            # Same arrangement as the other apps: read the key from the private apk-signing-keys repository.
+            echo "::add-mask::$KEYS_TOKEN"
+            D=$(mktemp -d)
+            git clone --depth 1 "https://x-access-token:${KEYS_TOKEN}@github.com/jacekkotowski/apk-signing-keys" "$D" 2> /dev/null || { echo "::error::Cannot read jacekkotowski/apk-signing-keys with KEYS_TOKEN."; exit 1; }
+            cp "$D/apk-prisoner-15/prisoner15.keystore" prisoner15.keystore
+            P=$(grep '^KS_PASS=' "$D/apk-prisoner-15/signing.env" | cut -d= -f2-)
+            echo "::add-mask::$P"
+            printf 'KS_FILE=prisoner15.keystore\nKS_PASS=%s\n' "$P" > signing.env
+            rm -rf "$D"
+          else
+            echo "::error::Add the repository secret KEYS_TOKEN (or KEYSTORE_B64 and KS_PASS) first (README.md, section Releases)."; exit 1
           fi
-          echo "$KEYSTORE_B64" | base64 -d > prisoner15.keystore
-          printf 'KS_FILE=prisoner15.keystore\nKS_PASS=%s\n' "$KS_PASS" > signing.env
 
       - uses: actions/setup-java@v4
         with:
