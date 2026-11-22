@@ -88,11 +88,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         web.evaluateJavascript("window.back?back():false", v -> { if (!"true".equals(v)) finish(); });
     }
 
-    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
-        super.onRequestPermissionsResult(req, perms, res);
-        if (req == 3) js("onSteps(" + (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) + ")");
-    }
-
     private String pendingExport;
     private void js(String code) { web.evaluateJavascript("window." + code.substring(0, code.indexOf('(')) + "&&" + code, null); }
 
@@ -144,15 +139,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             runOnUiThread(() -> { if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); });
         }
 
-        @JavascriptInterface public boolean hasSteps() { return sensors.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null; }
-
-        @JavascriptInterface public void askSteps() {
-            if (checkSelfPermission("android.permission.ACTIVITY_RECOGNITION") == PackageManager.PERMISSION_GRANTED) js("onSteps(true)");
-            else runOnUiThread(() -> requestPermissions(new String[]{"android.permission.ACTIVITY_RECOGNITION"}, 3));
-        }
-
-        @JavascriptInterface public void runStart(int run, int walk, int total, boolean loud, boolean detect) {
-            startForegroundService(new android.content.Intent(MainActivity.this, RunService.class).putExtra("run", run).putExtra("walk", walk).putExtra("total", total).putExtra("loud", loud).putExtra("detect", detect));
+        @JavascriptInterface public void runStart(int run, int walk, int total, boolean loud) {
+            startForegroundService(new android.content.Intent(MainActivity.this, RunService.class).putExtra("run", run).putExtra("walk", walk).putExtra("total", total).putExtra("loud", loud));
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
                 runOnUiThread(() -> requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 2));
         }

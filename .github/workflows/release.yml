@@ -2,6 +2,7 @@ name: Release
 
 # Builds, signs and publishes the APK as a GitHub Release.
 # Runs when a tag like v0.8.0 is pushed, or by hand from the Actions tab (Run workflow, give the version, for example 0.8.0).
+# With dry_run ticked it only tests, builds and checks the signature, and publishes nothing.
 # Needs two repository secrets: KEYSTORE_B64 (the keystore file, base64) and KS_PASS (its password). See README.md.
 
 on:
@@ -12,6 +13,10 @@ on:
       version:
         description: 'Version to release, for example 0.8.0 (must equal versionName in app/AndroidManifest.xml)'
         required: true
+      dry_run:
+        description: 'Test, build and check the signature, but publish nothing (for a branch that is not merged yet)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -22,7 +27,7 @@ jobs:
     env:
       EXPECTED_SHA256: 8be0199b1c6af26849f1ff522e616a053ca1130c10253df85f139327a8b781cf
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Version
         env:
@@ -57,19 +62,25 @@ jobs:
             echo "::error::Add the repository secret KEYS_TOKEN (or KEYSTORE_B64 and KS_PASS) first (README.md, section Releases)."; exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
+
+      - name: Playwright for the screen test
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.65.1
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Tests
         run: |
           node tests/engine.test.js
-          bash tests/java.sh
+          node tests/ui.js "$RUNNER_TEMP"
 
       - name: Android SDK
         run: |
@@ -90,6 +101,7 @@ jobs:
           cp Prisoner15.apk "Prisoner15-$VER.apk"
 
       - name: Publish release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

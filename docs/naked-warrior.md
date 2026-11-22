@@ -29,4 +29,5 @@ Summary below comes from secondary sources (StrongFirst articles, book summaries
 
 1. (v0.6) One-line tension cue per set (hands crush the floor, glutes squeezed, sharp exhale on effort).
 2. (v0.8) Paths toward the one-arm push-up and the pistol, six steps each, with a "next step" when the capacity reaches 10. The steps are ours, from general training sources; they have not been checked against the book.
-3. (v0.8) Optional 1-2-3 ladders on the light days, both sides on every rung. The 1-2-3 rungs are from the general description of the method, not checked against the book.
+3. (v0.8, removed in v1.1.0) Optional 1-2-3 ladders on the light days. Cut to keep the app simple; back only if the owner asks.
+4. (v1.1.0) Every session is two halves: the first 2 rounds standard push-ups and squats as a warm-up, then uneven push-ups and Bulgarian split squats, both sides, equal repetitions. This is the owner's design, not the book's.

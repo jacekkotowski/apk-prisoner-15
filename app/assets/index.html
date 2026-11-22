@@ -53,19 +53,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <script src="engine.js"></script>
 <script>
 const P = P15, app = document.getElementById('app');
-const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {}, say() {}, hasSteps: () => false, askSteps() {} };
+const A = window.Android || { hasProx: () => false, prox() {}, cue() {}, keepOn() {}, getReminder: () => '{"on":false,"h":6,"m":30}', setReminder() {}, runStart() {}, runStop() {}, runState: () => '{"on":false}', setLastDone() {}, exportData() {}, importData() {}, say() {} };
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const KIND = { moderate: 'moderate', light: 'light technique', recovery: 'easy recovery' };
+const KIND = { moderate: 'moderate', light: 'light', recovery: 'easy recovery' };
 const WARMUP = 'Arm circles · hip circles · slow half squats';
 let S = load(), view = 'home', energy = 'normal', paused = false, cnt = 0, left = 0, det = null, busy = false, note = '', lastT = Date.now(), ticks = 0, armed = false, want = 0, lastRep = 0, runNote = '', lastCount = 0, armStep = '';
 
 function load() {
   let s = null; try { s = JSON.parse(localStorage.getItem('p15')); } catch (e) {}
-  if (!s || s.v !== 1) s = P.newState();
-  s.prefs = Object.assign(P.newState().prefs, s.prefs);
-  if (s.cap && !s.cap0) s.cap0 = Object.assign({}, s.cap); // the comeback line starts here for histories from before v0.5
-  if (s.cap && !s.testAt) s.testAt = s.log.length ? s.log[0].date : P.dateKey(new Date());
-  return s;
+  return P.migrate(s) || P.newState(); // an old state is upgraded in engine.js, nowhere else
 }
 function syncLast() { const l = S.log[S.log.length - 1]; if (l) A.setLastDone(l.date); }
 const touchOn = () => S.prefs.count !== 'sensor' || !A.hasProx(), sensorOn = () => S.prefs.count !== 'touch' && A.hasProx();
@@ -80,9 +76,9 @@ const CUES = { std: 'Crush the floor. Glutes tight. Breathe out sharp.', uneven:
 // What the voice says when a step starts: round on the first set of a round, exercise, side, target; the second side is short.
 function phrase(st) {
   const ses = S.active; if (st.t === 'warm') return 'Warm up.'; if (st.t === 'rest') return 'Rest.';
-  const v = P.info(S, st.v), before = ses.steps.slice(0, ses.i), second = !!st.side && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round && (x.rung || 0) === (st.rung || 0));
+  const v = P.info(S, st.v), before = ses.steps.slice(0, ses.i), second = !!st.side && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round);
   const sw = st.side ? (st.side === 'L' ? 'left ' : 'right ') + v.say : '', n = want >= P.OPEN ? 'Until your form slows.' : `${want}.`;
-  if (second || (st.rung > 1 && before.some(x => x.t === 'set' && x.v === st.v && x.round === st.round))) return `${sw[0].toUpperCase() + sw.slice(1)}. ${n}`;
+  if (second) return `${sw[0].toUpperCase() + sw.slice(1)}. ${n}`;
   let t = (!ses.test && !before.some(x => x.t === 'set' && x.round === st.round) ? `Round ${st.round}. ` : '') + v.name + (sw ? ', ' + sw : '') + `. ${n}`;
   if (!before.some(x => x.t === 'set' && x.v === st.v)) t += ' ' + CUES[st.v];
   return t;
@@ -130,18 +126,24 @@ const views = {
     <button class="big" data-a="setup">Lock in</button>`,
 
   home: () => {
-    const now = new Date(), ses = P.buildSession(S, now, energy), st = P.stats(S, now), last = S.log[S.log.length - 1];
+    const now = new Date(), ses = P.buildSession(S, now, energy), st = P.stats(S, now);
     const resume = S.active && S.active.date === P.dateKey(now);
     const seg = ['exhausted', 'normal', 'strong'].map(e => `<button data-a="energy" data-x="${e}" aria-pressed="${e === energy}">${e}</button>`).join('');
-    const setupTxt = [ses.push, ses.squat].map(v => P.info(S, v).setup).filter(Boolean).join(' '), rd = ['uneven', 'bulg'].filter(v => P.ready(S, v));
-    const cb = P.comeback(S, [ses.push, ses.squat]), vd = P.verdict(S, now), ms = P.milestone(st.days), due = !resume && P.testDue(S, now);
-    const hint = note || (st.doneToday ? 'Served today.' : P.missed(S, now) ? 'Missed a day. Short one today: two easy rounds.' : last && last.feel === 'hard' ? 'Last session felt hard. Exhausted mode still counts.' : rd.length ? 'Next step ready: see Path.' : '');
-    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="path">Path</button><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
+    // One line per variation in today's plan, in a fixed order; the numbers are the targets of each round that uses it.
+    const used = ['std', 'uneven', 'squat', 'bulg'].filter(v => ses.plan.some(r => r.push === v || r.squat === v));
+    const lines = used.map(v => {
+      const t = ses.plan.filter(r => r.push === v || r.squat === v).map(r => r.push === v ? r.tp : r.ts);
+      return `<div class="row sp"><span>${P.name(S, v)}${P.VAR[v].sides > 1 ? (P.VAR[v].fam === 'push' ? ' / side' : ' / leg') : ''}</span><b>${t.join(' · ')}</b></div>`;
+    }).join('');
+    const setupTxt = used.filter(v => P.VAR[v].sides > 1).map(v => P.info(S, v).setup).filter(Boolean).join(' '), rd = ['uneven', 'bulg'].filter(v => P.ready(S, v));
+    const cb = P.comeback(S, used), due = !resume && P.testDue(S, now), vd = P.verdict(S, now), ms = [7, 30, 100].includes(st.days) ? P.milestone(st.days) : '';
+    // One message line: the result of what you just did, else the first that applies.
+    const msg = note || (resume ? 'Session under way. Resume it.' : due ? 'Test day is due. Your call: it replaces today.' : P.missed(S, now) ? 'Missed a day. Short one today: two easy rounds.' : rd.length ? 'Next step ready: see Record.' : vd || ms || (cb ? 'Since day 1: ' + cb : ''));
+    return `<div class="row sp"><h1>PRISONER 15</h1><span><button class="link" data-a="go" data-x="stats">Record</button><button class="link" data-a="go" data-x="settings">Setup</button></span></div>
     <div><div class="day">${DAYS[ses.dow]}</div><div class="mute up sm">${KIND[ses.kind]} · ${ses.rounds} rounds · about ${Math.ceil(P.estimate(ses.steps) / 60)} min</div></div>
-    <div class="plan"><div class="row sp"><span>${P.name(S, ses.push)}${P.VAR[ses.push].sides > 1 ? ' / side' : ''}</span><b>${ses.ladder ? 'ladders 1–' + ses.ladder[ses.push] : ses.tp.join(' · ')}</b></div>
-    <div class="row sp"><span>${P.name(S, ses.squat)}${P.VAR[ses.squat].sides > 1 ? ' / leg' : ''}</span><b>${ses.ladder ? 'ladders 1–' + ses.ladder[ses.squat] : ses.ts.join(' · ')}</b></div>${setupTxt ? `<div class="mute sm" id="setup" style="margin-top:6px">${setupTxt}</div>` : ''}${cb ? `<div class="mute sm" id="cb" style="margin-top:6px">Since day 1: ${cb}</div>` : ''}</div>
-    <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}${ms ? `<div class="mute sm" id="ms" style="margin-top:6px">${ms}</div>` : ''}</div>
-    ${vd ? `<div class="sm" id="vd">${vd}</div>` : ''}<div class="acc sm" id="hint">${hint}</div>
+    <div class="plan">${lines}${setupTxt ? `<div class="mute sm" id="setup" style="margin-top:6px">${setupTxt}</div>` : ''}</div>
+    <div class="grow tally"><div class="row sp mute up sm"><span>Days served</span><span>${st.days}</span></div>${tally(st.days)}</div>
+    <div class="acc sm" id="msg">${msg}</div>
     ${due ? '<button data-a="test" id="testb">Test day: find your numbers · replaces today</button>' : ''}
     ${resume ? '' : `<div class="seg">${seg}</div>`}
     <button class="big" data-a="${resume ? 'resume' : 'start'}">${resume ? 'Resume' : 'Start'}</button>${tabs('home')}`;
@@ -155,7 +157,7 @@ const views = {
     const pad = cm && touchOn();
     const sub = open ? (cm ? 'Clean reps until your form slows. Stop before failure.' + (det ? ' <i id="dot"></i>' : '') : 'Clean reps until your form slows. Set the number, tap done.') : set ? (cm ? `Target ${want}` + (det ? ' · sensor on <i id="dot"></i>' : '') : `Do ${want}, then tap done. Slow and clean.`)
       : (st.t === 'warm' ? WARMUP : 'Rest') + (nx ? ` · next: ${P.name(S, nx.v).toLowerCase()} ${nx.target}${nx.side ? ' ' + (nx.side === 'L' ? 'left' : 'right') : ''}` : '');
-    return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `${ses.ladder ? 'Ladder' : 'Round'} ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
+    return `<div class="row sp"><span class="up sm">${ses.test ? 'Test day' : `Round ${round} / ${ses.rounds}`}</span><b id="clock" class="up"></b></div>
     <div id="bar"><i></i></div>
     <div id="tap"${pad ? ' class="pad" data-pad="1"' : ''}>${pad ? '<div class="padlab">NOSE ON THE PAD</div>' : ''}<div id="ex">${set ? v.name : st.t === 'warm' ? 'Warm up' : 'Rest'}</div><div id="side">${side}</div><div id="num"></div><div class="mute">${sub}</div>${set ? `<div class="sm" id="tcue" style="color:var(--acc);margin-top:8px;padding:0 16px">${CUES[st.v]}</div>` : ''}</div>
     ${set ? `<div class="pm"><button data-a="minus" aria-label="one less">−</button><button id="doneb" data-a="done"></button><button data-a="plus" aria-label="one more">+</button></div>` : `<button data-a="skip" style="padding:20px">Skip ${st.t === 'warm' ? 'warm-up' : 'rest'}</button>`}
@@ -173,6 +175,14 @@ const views = {
   },
 
   stats: () => {
+    const pathBlock = (v, title) => {
+      const lv = P.level(S, v), L = P.PATH[v], rd = P.ready(S, v), c = S.cap[v];
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="mute sm up">${title}</div>
+      ${L.map((x, i) => `<div style="padding:3px 0;${i === lv ? 'color:var(--acc);font-weight:700' : i < lv ? 'color:var(--mute)' : ''}">${i < lv ? '✓ ' : i === lv ? '→ ' : '· '}${x.name}</div>`).join('')}
+      <div class="sm" style="margin-top:6px" id="ps_${v}">${L[lv].setup}</div>
+      <div class="mute sm" style="margin-top:6px">Capacity ${c} per side. ${lv >= L.length - 1 ? 'Top of the path.' : rd ? 'Ready for the next step.' : `The next step opens at ${P.GRAD}.`}</div>
+      <div class="row" style="margin-top:8px">${rd ? `<button data-a="stepUp" data-x="${v}" id="up_${v}">Next step</button>` : ''}${lv > 0 ? `<button class="link" data-a="stepBack" data-x="${v}">Step back</button>` : ''}</div></div>`;
+    };
     const st = P.stats(S, new Date()), max = Math.max(1, ...st.week.map(d => d.reps)), tot = st.side.L + st.side.R;
     const best = Object.keys(P.VAR).map(k => `<tr><td>${P.name(S, k)}</td><td class="n">${S.best[k] || '–'}</td><td class="n">${S.cap[k]}</td></tr>`).join('');
     const log = S.log.slice(-14).reverse().map(e => `<tr><td>${e.date.slice(5)} ${DAYS[e.dow].slice(0, 3)}</td><td>${e.energy}${e.partial ? ', short' : ''}</td><td class="n">${P.reps(e, 'push')}</td><td class="n">${P.reps(e, 'squat')}</td><td class="n">${fmt(e.secs)}</td></tr>`).join('');
@@ -184,7 +194,10 @@ const views = {
     <div class="days">${st.week.map(d => `<span class="${d.today ? 't' : ''}">${DAYS[d.dow].slice(0, 2)}</span>`).join('')}</div></div>
     <div class="mute sm">Left / right balance: ${tot ? `${st.side.L} / ${st.side.R} repetitions` : 'no one-sided sets yet'}</div>
     <table><tr><th>Exercise</th><th class="n">Best clean set</th><th class="n">Capacity</th></tr>${best}</table>
-    <table><tr><th>Run</th><th>Run/walk</th><th>Feel</th><th class="n">Time</th></tr>${(S.runs || []).slice(-10).reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${P.mmss(r.run)} / ${P.mmss(r.walk)}</td><td>${r.feel}${r.done ? '' : ', short'}</td><td class="n">${fmt(r.secs)}${r.km ? ' · ' + r.km.toFixed(1) + ' km' : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">No runs yet.</td></tr>'}</table>
+    <div><div class="mute sm up" style="margin-bottom:2px">Path</div>
+    <div class="mute sm">Two paths toward the one-arm push-up and the pistol. You move up when you choose, once the capacity reaches ${P.GRAD}. The capacity then restarts at half so the new step begins easy. Never push through pain.</div>${pathBlock('uneven', 'Push-ups → one-arm push-up')}${pathBlock('bulg', 'Squats → pistol')}
+    <p class="mute sm">The steps are our own ladder from general training sources, not copied from the book.</p></div>
+    <table><tr><th>Run</th><th>Run/walk</th><th>Feel</th><th class="n">Time</th></tr>${(S.runs || []).slice(-10).reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${P.mmss(r.run)} / ${P.mmss(r.walk)}</td><td>${r.feel}${r.done ? '' : ', short'}</td><td class="n">${fmt(r.secs)}</td></tr>`).join('') || '<tr><td colspan="4" class="mute">No runs yet.</td></tr>'}</table>
     <table><tr><th>Day</th><th>Energy</th><th class="n">Push</th><th class="n">Squat</th><th class="n">Time</th></tr>${log || '<tr><td colspan="5" class="mute">Nothing yet.</td></tr>'}</table></div>`;
   },
 
@@ -192,7 +205,7 @@ const views = {
     const r = runCfg(), st = JSON.parse(A.runState());
     if (st.on) return `<div class="row sp"><h1>RUN · WALK · RUN</h1><span class="up sm mute">${P.mmss(r.run)} / ${P.mmss(r.walk)}</span></div>
     <div id="bar"><i></i></div>
-    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute" id="rmv" style="margin-top:6px"></div><div class="mute sm" style="margin-top:14px">Run as long as you like. 20 minutes counts as a run. Cues keep going with the screen off; your music keeps playing.</div></div>
+    <div id="tap"><div id="ex"></div><div id="num"></div><div class="mute" id="rtot"></div><div class="mute sm" style="margin-top:14px">Run as long as you like. 20 minutes counts as a run. Cues keep going with the screen off; your music keeps playing.</div></div>
     <button data-a="runStop" style="padding:20px">Stop</button>`;
     const pm = (k, t, v) => `<div class="f"><span>${t}</span><span class="row"><button data-a="rset" data-x="${k},-1" aria-label="less">−</button><b class="val" id="r_${k}">${v}</b><button data-a="rset" data-x="${k},1" aria-label="more">+</button></span></div>`;
     return `<div class="row sp"><h1>RUN · WALK · RUN</h1><button class="link" data-a="go" data-x="stats">Record</button></div>
@@ -200,7 +213,6 @@ const views = {
     <div class="mute sm">Galloway: walk breaks from the first minute. Easy pace, you can talk. ${r.custom ? 'Your own run/walk.' : `Step ${r.level + 1} of ${P.LADDER.length}: two comfortable runs of 20+ minutes move you up.`}</div></div>
     <div class="grow scroll">${pm('run', 'Run', P.mmss(r.run))}${pm('walk', 'Walk', P.mmss(r.walk))}${pm('mins', 'Target minutes', r.mins)}
     <label class="f"><span>Loud cues<br><span class="mute sm">alarm volume, for wind and traffic</span></span><span class="row"><input type="checkbox" id="loud" data-a="loud" ${S.prefs.loud ? 'checked' : ''}><button data-a="rtest">Test</button></span></label>
-    ${A.hasSteps() ? `<label class="f"><span>Detect walking and running<br><span class="mute sm">warns if you keep running in a walk break; logs steps</span></span><input type="checkbox" id="detect" data-a="detect" ${S.prefs.detect ? 'checked' : ''}></label>` : ''}
     ${pm('pace', 'Easy pace per km', P.mmss(r.pace))}
     <label class="f"><span>or timed 1.6 km<br><span class="mute sm">pace sets the starting step</span></span><span class="row"><input id="mm" inputmode="numeric" placeholder="8:30" style="width:86px"><button data-a="rmile">Set</button></span></label>
     <div class="mute sm" style="padding-top:8px">About ${(r.mins * 60 / r.pace).toFixed(1)} km in ${r.mins} minutes at this pace. ${r.custom ? '<button class="link" data-a="rreset">Back to the plan</button>' : ''}</div></div>
@@ -209,31 +221,17 @@ const views = {
 
   runDone: () => { const p = S.pendingRun; return `<h1>RUN · WALK · RUN</h1><div class="day">${p.secs >= P.RUN_DONE ? 'Run done' : 'Short run'}</div>
     <div class="stat"><div><b>${fmt(p.secs)}</b><span class="mute sm up">time</span></div><div><b>${P.mmss(p.run)}</b><span class="mute sm up">run</span></div><div><b>${P.mmss(p.walk)}</b><span class="mute sm up">walk</span></div></div>
-    <div class="mute">${p.secs >= P.RUN_DONE ? 'Counts as a run.' : 'Logged. 20 minutes or more counts as a run.'}</div>${p.steps ? `<div class="mute sm">${p.steps} steps · about ${p.km.toFixed(1)} km (an estimate from steps)</div>` : ''}
+    <div class="mute">${p.secs >= P.RUN_DONE ? 'Counts as a run.' : 'Logged. 20 minutes or more counts as a run.'}</div>
     <div class="grow"></div><div class="up sm mute">How did it feel?</div>
     <div class="seg">${['easy', 'ok', 'hard'].map(f => `<button data-a="runFeel" data-x="${f}" style="padding:22px 0;font-size:18px">${f}</button>`).join('')}</div>
     <button class="link" data-a="runDiscard">Discard this run</button>`; },
-
-  path: () => {
-    const block = (v, title) => {
-      const lv = P.level(S, v), L = P.PATH[v], rd = P.ready(S, v), c = S.cap[v];
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="mute sm up">${title}</div>
-      ${L.map((x, i) => `<div style="padding:3px 0;${i === lv ? 'color:var(--acc);font-weight:700' : i < lv ? 'color:var(--mute)' : ''}">${i < lv ? '✓ ' : i === lv ? '→ ' : '· '}${x.name}</div>`).join('')}
-      <div class="sm" style="margin-top:6px" id="ps_${v}">${L[lv].setup}</div>
-      <div class="mute sm" style="margin-top:6px">Capacity ${c} per side. ${lv >= L.length - 1 ? 'Top of the path.' : rd ? 'Ready for the next step.' : `The next step opens at ${P.GRAD}.`}</div>
-      <div class="row" style="margin-top:8px">${rd ? `<button data-a="stepUp" data-x="${v}" id="up_${v}">Take the next step</button>` : ''}${lv > 0 ? `<button class="link" data-a="stepBack" data-x="${v}">Step back</button>` : ''}</div></div>`;
-    };
-    return `<div class="row sp"><h1>PATH</h1><button class="link" data-a="go" data-x="home">Back</button></div>
-    <div class="grow scroll"><div class="mute sm">Two ladders toward the one-arm push-up and the pistol. You move up when you choose, once the capacity reaches ${P.GRAD}. The capacity then restarts at half so the new step begins easy. Never push through pain.</div>${block('uneven', 'Push-ups → one-arm push-up')}${block('bulg', 'Squats → pistol')}
-    <p class="mute sm">The steps are our own ladder from general training sources, not copied from the book.</p></div>`;
-  },
 
   settings: () => {
     const sg = (k, t, o) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="mute sm up" style="margin-bottom:6px">${t}</div><div class="seg">${o.map(([v, l]) => `<button data-a="pref" data-x="${k},${v}" aria-pressed="${S.prefs[k] === v}">${l}</button>`).join('')}</div></div>`;
     const c = (k, t) => `<label class="f"><span>${t}</span><input type="checkbox" data-p="${k}" ${S.prefs[k] ? 'checked' : ''}></label>`;
     return `<div class="row sp"><h1>SETUP</h1><button class="link" data-a="saveSet">Save</button></div>
     <div class="grow scroll"><div class="mute sm up" style="margin-top:6px">Capacity: clean reps in one set</div>${capForm()}${remForm()}
-    ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}${sg('light', 'Light days (uneven, split squats)', [['rounds', 'Rounds'], ['ladder', '1-2-3 ladders']])}${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
+    ${sg('rounds', 'Rounds (always even)', [[2, '2'], [4, '4'], [6, '6']])}<div class="mute sm" style="padding:6px 0">The first 2 rounds are standard push-ups and squats; any further rounds are uneven push-ups and Bulgarian split squats.</div>${sg('count', 'Count push-ups by', [['touch', 'Touch'], ['sensor', 'Sensor'], ['both', 'Both']])}${sg('sens', 'Touch sensitivity', [['normal', 'Normal'], ['high', 'High']])}
     ${c('sound', 'Sound')}${c('vibe', 'Vibration')}${c('voice', 'Voice in workout')}
     <p class="mute sm">Touch: put the phone on the floor and touch the marked pad with your nose; each touch is one push-up. High counts every contact. ${A.hasProx() ? 'Sensor: top edge of the phone under your face.' : 'This phone reports no proximity sensor, so push-ups are counted by touch.'}</p>
     <div class="acc sm" id="smsg"></div>
@@ -257,7 +255,6 @@ function paintRun() {
   document.getElementById('num').textContent = fmt(st.left); document.getElementById('num').style.fontSize = '34vw';
   document.getElementById('rtot').textContent = fmt(st.elapsed) + (st.elapsed < st.total ? ' of ' + fmt(st.total) : ' · target reached, go on or stop');
   document.querySelector('#bar i').style.width = Math.min(100, 100 * st.elapsed / st.total) + '%';
-  const mv = document.getElementById('rmv'); if (mv) mv.textContent = st.det ? `${st.cad} steps/min · ${{ run: 'running', walk: 'walking', still: 'still' }[st.mv] || ''}` : '';
 }
 function render() { if (!S.cap) view = 'setup'; else if (S.pendingRun && view !== 'runDone') view = 'runDone'; app.innerHTML = views[view](); if (view === 'work') paint(); if (view === 'run') paintRun(); }
 function paint() {
@@ -276,7 +273,7 @@ function enter() {
 }
 function next(rec) {
   const ses = S.active, st = cur();
-  if (rec != null) ses.done.push({ v: st.v, side: st.side, target: want, done: rec, round: st.round, rung: st.rung });
+  if (rec != null) ses.done.push({ v: st.v, side: st.side, target: want, done: rec, round: st.round });
   ses.i++; save(); if (cur()) cue('step'); enter();
 }
 function rep() {
@@ -286,7 +283,7 @@ function rep() {
 }
 function endWork() {
   const ses = S.active, st = cur(); busy = false; A.prox(false); A.keepOn(false); paused = false;
-  if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round, rung: st.rung }); ses.i++; }
+  if (st && counting(st) && cnt > 0) { ses.done.push({ v: st.v, side: st.side, target: want, done: cnt, round: st.round }); ses.i++; }
   if (!ses.done.length) { S.active = null; save(); return go('home'); }
   if (ses.test) {
     const r = P.finishTest(S, ses); save(); syncLast(); cue('end'); say('Test done.'); energy = 'normal';
@@ -301,9 +298,9 @@ const acts = {
   setup() { S.cap = readCaps(); S.cap0 = Object.assign({}, S.cap); S.testAt = P.dateKey(new Date()); saveRem(); save(); go('home'); },
   stepUp(v) {
     if (armStep !== 'u' + v) { armStep = 'u' + v; document.getElementById('up_' + v).textContent = 'Tap again to move up'; return; }
-    armStep = ''; P.stepUp(S, v, P.dateKey(new Date())); save(); go('path');
+    armStep = ''; P.stepUp(S, v, P.dateKey(new Date())); save(); go('stats');
   },
-  stepBack(v) { P.stepBack(S, v, P.dateKey(new Date())); save(); go('path'); },
+  stepBack(v) { P.stepBack(S, v, P.dateKey(new Date())); save(); go('stats'); },
   test() { note = ''; S.active = P.buildTest(S, new Date()); save(); begin(); },
   backup() { A.exportData(JSON.stringify(S)); },
   restore() { if (!armed) { armed = true; document.getElementById('restore').textContent = 'Tap again: replaces everything here'; return; } armed = false; A.importData(); },
@@ -319,10 +316,10 @@ const acts = {
   },
   rmile() { const t = P.parseTime(document.getElementById('mm').value); if (!t) return; const r = runCfg(); r.pace = Math.min(780, Math.max(180, P.longRunPace(t))); r.custom = false; r.level = P.levelFor(r.pace); r.ok = r.hard = 0; save(); render(); },
   rreset() { runCfg().custom = false; save(); render(); },
-  runStart() { runNote = ''; const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud, !!S.prefs.detect); render(); },
+  runStart() { runNote = ''; const r = runCfg(); A.runStart(r.run, r.walk, r.mins * 60, !!S.prefs.loud); render(); },
   runStop() {
     const st = JSON.parse(A.runState()), r = runCfg(); A.runStop();
-    if (st.on && st.elapsed >= 60) { S.pendingRun = { date: P.dateKey(new Date()), secs: st.elapsed, run: r.run, walk: r.walk, level: r.level, custom: r.custom, steps: st.det ? st.steps : 0, km: st.det ? (st.rs * 1.0 + st.ws * 0.72) / 1000 : 0 }; save(); return go('runDone'); }
+    if (st.on && st.elapsed >= 60) { S.pendingRun = { date: P.dateKey(new Date()), secs: st.elapsed, run: r.run, walk: r.walk, level: r.level, custom: r.custom }; save(); return go('runDone'); }
     render();
   },
   runFeel(f) {
@@ -342,8 +339,7 @@ const acts = {
   finish() { const st = cur(); if (!busy && st && counting(st) && st.side && cnt > 0 && !P.hasFirst(S.active, st)) return next(cnt); endWork(); },
   pref(x) { const [k, v] = x.split(','); grab(); S.prefs[k] = k === 'rounds' ? +v : v; save(); render(); },
   loud() { S.prefs.loud = document.getElementById('loud').checked; save(); },
-  rtest() { A.runStart(3, 3, 6, !!S.prefs.loud, false); render(); },
-  detect() { const on = document.getElementById('detect').checked; S.prefs.detect = on; save(); if (on) A.askSteps(); },
+  rtest() { A.runStart(3, 3, 6, !!S.prefs.loud); render(); },
   feel(x) {
     const r = P.finish(S, S.active, x); save(); syncLast(); energy = 'normal';
     note = r.changes.map(c => `${P.name(S, c.v)}: capacity ${c.from} → ${c.to}.`).join(' ') || (r.entry.partial ? 'Work recorded.' : 'Day served.');
@@ -380,16 +376,15 @@ setInterval(() => {
 
 // Called by the Android side.
 window.onProx = near => { if (!det || paused) return; if (det.feed(!!near, Date.now())) rep(); else paint(); };
-window.onSteps = ok => { if (!ok) { S.prefs.detect = false; save(); runNote = 'Permission refused: detection is off.'; if (view === 'run') render(); } };
 window.onBackup = ok => { const m = document.getElementById('smsg'); if (m) m.textContent = ok ? 'Backup saved.' : 'That did not work.'; };
 window.onImport = text => {
   let o = null; try { o = JSON.parse(text); } catch (e) {}
-  if (!o || o.v !== 1 || !o.cap || !Array.isArray(o.log)) return window.onBackup(false);
-  localStorage.setItem('p15', JSON.stringify(o)); S = load(); S.active = null; S.pendingRun = null; save(); syncLast();
+  const m = o && o.cap && Array.isArray(o.log) ? P.migrate(o) : null; if (!m) return window.onBackup(false);
+  localStorage.setItem('p15', JSON.stringify(m)); S = load(); S.active = null; S.pendingRun = null; save(); syncLast();
   energy = P.missed(S, new Date()) ? 'exhausted' : 'normal'; note = 'Backup loaded.'; go('home');
 };
 window.hold = () => { if (view === 'work' && !paused) { paused = true; save(); render(); } };
-window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings' || view === 'run' || view === 'path') { go('home'); return true; } return false; };
+window.back = () => { if (view === 'work') { if (!paused) acts.pause(); return true; } if (view === 'stats' || view === 'settings' || view === 'run') { go('home'); return true; } return false; };
 render();
 </script>
 </body>

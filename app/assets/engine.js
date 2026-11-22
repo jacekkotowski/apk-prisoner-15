@@ -6,36 +6,40 @@
     squat: { name: 'Squats', fam: 'squat', sides: 1, sec: 2.5 },
     bulg: { name: 'Bulgarian split squats', fam: 'squat', sides: 2, sec: 3, sideWord: 'leg in front' },
   };
-  const FACTOR = { moderate: 0.7, light: 0.6, recovery: 0.5 };
+  // Every session has two halves. Warm-up half: the first WARM_ROUNDS rounds, standard push-ups and squats, a flat share of capacity.
+  // Heavy half: the remaining rounds, uneven push-ups and Bulgarian split squats, a day factor of the one-sided capacity.
+  const WARM_ROUNDS = 2, WARM_FACTOR = 0.6, FACTOR = { moderate: 0.7, light: 0.6 }, STRONG_PLUS = 0.1, LAST_HEAVY = 1.15;
   const REST = 30, WARM = 60, LIMIT = 900, BUDGET = 810; // seconds; BUDGET leaves slack under the hard 15:00
 
   function newState() {
-    return { v: 1, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, detect: false, light: 'rounds', rounds: 4, count: 'touch', sens: 'high', loud: false } };
+    return { v: 2, cap: null, ok: {}, hard: {}, flip: {}, best: {}, log: [], active: null, prefs: { sound: true, vibe: true, voice: true, rounds: 4, count: 'touch', sens: 'high', loud: false } };
   }
   function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  function dayPlan(dow) { // 0 = Sunday
-    if (dow === 0) return { push: 'std', squat: 'squat', kind: 'recovery' };
-    return dow % 2 ? { push: 'std', squat: 'squat', kind: 'moderate' } : { push: 'uneven', squat: 'bulg', kind: 'light' };
-  }
+  // Monday, Wednesday, Friday moderate; Tuesday, Thursday, Saturday light; Sunday recovery (0 = Sunday). Both moderate and light days are mixed.
+  function dayPlan(dow) { return { kind: dow === 0 ? 'recovery' : dow % 2 ? 'moderate' : 'light' }; }
   // Rounds are always an even number: 2 on exhausted and recovery days, otherwise the chosen 2, 4 or 6 (default 4).
   function rounds(kind, energy, pref) { return energy === 'exhausted' || kind === 'recovery' ? 2 : pref === 2 || pref === 6 ? pref : 4; }
-  function targets(cap, kind, energy, n) {
-    let f = FACTOR[kind];
-    if (energy === 'exhausted') f = Math.min(f, 0.5);
-    if (energy === 'strong' && kind !== 'recovery') f += 0.1;
-    const wave = kind === 'moderate' && energy !== 'exhausted' && n >= 4;
-    return Array.from({ length: n }, (_, i) => Math.max(1, Math.round(cap * f * (wave ? (i === 0 ? 1.07 : i === n - 1 ? 1.25 : 1) : 1))));
+  // The one place the session rules live: one row per round. n and scale are given by buildSession when it fits the time budget.
+  function sessionPlan(state, date, energy, n, scale) {
+    const kind = dayPlan(date.getDay()).kind; n = n || rounds(kind, energy, (state.prefs || {}).rounds); scale = scale || 1;
+    const f = (FACTOR[kind] || FACTOR.light) + (energy === 'strong' ? STRONG_PLUS : 0), rep = x => Math.max(1, Math.round(x)), cap = v => state.cap[v] * scale;
+    return Array.from({ length: n }, (_, i) => {
+      const round = i + 1;
+      if (round <= WARM_ROUNDS) return { round, push: 'std', squat: 'squat', tp: rep(cap('std') * WARM_FACTOR), ts: rep(cap('squat') * WARM_FACTOR) };
+      const boost = kind === 'moderate' && round === n ? LAST_HEAVY : 1;
+      return { round, push: 'uneven', squat: 'bulg', tp: rep(cap('uneven') * f * boost), ts: rep(cap('bulg') * f * boost) };
+    });
   }
-  function steps(plan, tp, ts, flip, rest, warm, sec) {
-    const out = [{ t: 'warm', secs: warm }], n = tp.length;
+  function steps(plan, flip, rest, warm, sec) {
+    const out = [{ t: 'warm', secs: warm }];
     const add = (v, target, round) => {
-      if (VAR[v].sides === 1) out.push({ t: 'set', v, side: null, target, round, sec: sec && sec[v] });
-      else (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target, round, sec: sec && sec[v] }));
+      if (VAR[v].sides === 1) out.push({ t: 'set', v, side: null, target, round, sec: sec[v] });
+      else (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target, round, sec: sec[v] }));
     };
-    for (let r = 0; r < n; r++) {
-      add(plan.push, tp[r], r + 1); out.push({ t: 'rest', secs: rest });
-      add(plan.squat, ts[r], r + 1); if (r < n - 1) out.push({ t: 'rest', secs: rest });
-    }
+    plan.forEach((r, i) => {
+      add(r.push, r.tp, r.round); out.push({ t: 'rest', secs: rest });
+      add(r.squat, r.ts, r.round); if (i < plan.length - 1) out.push({ t: 'rest', secs: rest });
+    });
     return out;
   }
   function estimate(st) { return st.reduce((s, x) => s + (x.t === 'set' ? x.target * (x.sec || VAR[x.v].sec) + (x.side ? 6 : 0) : x.secs), 0); }
@@ -77,38 +81,22 @@
     state.cap[v] = Math.min(GRAD - 1, Math.max(capFrom, capFrom * 2)); state.ok[v] = 0; state.hard[v] = 0; state.best[v] = 0;
     (state.pathLog = state.pathLog || []).push({ date, v, from, to: from - 1, capFrom, capTo: state.cap[v] }); return true;
   }
-  // 1-2-3 ladders on the light days: each ladder is rungs of 1, 2, 3 ... repetitions, both sides on every rung, no rest between rungs. The top rung grows with capacity.
-  function topRung(c) { return c < 5 ? Math.max(1, Math.min(3, Math.round(c))) : Math.min(6, 3 + Math.floor((c - 5) / 5)); }
-  function ladderSteps(plan, n, top, flip, rest, warm, sec) {
-    const out = [{ t: 'warm', secs: warm }];
-    for (let r = 1; r <= n; r++) [plan.push, plan.squat].forEach((v, i) => {
-      for (let k = 1; k <= top[v]; k++) (flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => out.push({ t: 'set', v, side, target: k, round: r, rung: k, sec: sec[v] }));
-      if (i === 0 || r < n) out.push({ t: 'rest', secs: rest });
-    });
-    return out;
-  }
-  // Builds today's session. To fit the time budget it shortens the rests and the warm-up first, then drops two rounds, then lowers repetitions.
+  // Builds today's session. To fit the time budget it shortens the rests and the warm-up first, then drops two rounds (always heavy ones), then lowers repetitions.
   function buildSession(state, date, energy) {
-    const dow = date.getDay(), plan = dayPlan(dow), pr = state.prefs || {}, ladder = plan.kind === 'light' && pr.light === 'ladder';
-    const sec = { [plan.push]: info(state, plan.push).sec, [plan.squat]: info(state, plan.squat).sec };
-    let n = rounds(plan.kind, energy, pr.rounds), scale = 1, rest = REST, warm = WARM, st, tp, ts, top = null;
+    const dow = date.getDay(), kind = dayPlan(dow).kind, sec = {};
+    Object.keys(VAR).forEach(v => { sec[v] = info(state, v).sec; });
+    let n = rounds(kind, energy, (state.prefs || {}).rounds), scale = 1, rest = REST, warm = WARM, plan, st;
     for (;;) {
-      if (ladder) {
-        top = { [plan.push]: topRung(state.cap[plan.push] * scale), [plan.squat]: topRung(state.cap[plan.squat] * scale) };
-        tp = [top[plan.push]]; ts = [top[plan.squat]]; st = ladderSteps(plan, n, top, state.flip, rest, warm, sec);
-      } else {
-        tp = targets(state.cap[plan.push] * scale, plan.kind, energy, n); ts = targets(state.cap[plan.squat] * scale, plan.kind, energy, n);
-        st = steps(plan, tp, ts, state.flip, rest, warm, sec);
-      }
+      plan = sessionPlan(state, date, energy, n, scale); st = steps(plan, state.flip || {}, rest, warm, sec);
       if (estimate(st) <= BUDGET) break;
       if (rest > 20) rest = 20; else if (warm > 30) warm = 30; else if (rest > 15) rest = 15;
       else if (n > 2) { n -= 2; rest = REST; warm = WARM; }
       else if (scale > 0.05) scale *= 0.9; else break;
     }
-    return { date: dateKey(date), dow, kind: plan.kind, push: plan.push, squat: plan.squat, energy, rounds: n, tp, ts, ladder: top, steps: st, i: 0, secs: 0, done: [] };
+    return { date: dateKey(date), dow, kind, energy, rounds: n, plan, steps: st, i: 0, secs: 0, done: [] };
   }
   // One-sided exercises are always done in pairs with the same repetitions on both sides.
-  function firstSide(ses, st) { return st.side ? ses.done.find(d => d.v === st.v && d.round === st.round && (d.rung || 0) === (st.rung || 0) && d.side !== st.side && d.done > 0) : null; }
+  function firstSide(ses, st) { return st.side ? ses.done.find(d => d.v === st.v && d.round === st.round && d.side !== st.side && d.done > 0) : null; }
   function hasFirst(ses, st) { return !!firstSide(ses, st); }
   // Repetitions asked for in this set: the second side of a pair never asks for more than the first side did.
   function target(ses, st) { const f = firstSide(ses, st); return f ? Math.max(1, Math.min(st.target, f.done)) : st.target; }
@@ -117,7 +105,7 @@
     const sets = ses.done, planned = ses.steps.filter(s => s.t === 'set').length;
     const entry = { date: ses.date, dow: ses.dow, kind: ses.kind, energy: ses.energy, feel, secs: Math.round(ses.secs), partial: sets.length < planned, sets };
     const changes = [];
-    [ses.push, ses.squat].forEach(v => {
+    [...new Set(ses.steps.filter(s => s.t === 'set').map(s => s.v))].forEach(v => {
       const mine = sets.filter(s => s.v === v), plannedV = ses.steps.filter(s => s.t === 'set' && s.v === v).length;
       if (!mine.length) return;
       const clean = mine.length === plannedV && mine.every(s => s.done >= s.target);
@@ -148,7 +136,7 @@
       if (VAR[v].sides === 1) st.push({ t: 'set', v, side: null, target: OPEN, round: 1, test: true });
       else (state.flip[v] ? ['R', 'L'] : ['L', 'R']).forEach(side => st.push({ t: 'set', v, side, target: OPEN, round: 1, test: true }));
     });
-    return { date: dateKey(date), dow: date.getDay(), kind: 'test', push: 'std', squat: 'squat', energy: 'test', rounds: 1, tp: [], ts: [], steps: st, i: 0, secs: 0, done: [], test: true };
+    return { date: dateKey(date), dow: date.getDay(), kind: 'test', energy: 'test', rounds: 1, plan: [], steps: st, i: 0, secs: 0, done: [], test: true };
   }
   function finishTest(state, ses) {
     const sets = ses.done.filter(s => s.done > 0), changes = [];
@@ -211,7 +199,7 @@
   function levelFor(pace) { const g = galloway(pace).run; let i = 0; LADDER.forEach((x, k) => { if (x[0] <= g) i = k; }); return i; }
   function finishRun(state, r) {
     const R = state.run, done = r.secs >= RUN_DONE; let change = 0;
-    (state.runs = state.runs || []).push({ date: r.date, secs: Math.round(r.secs), run: r.run, walk: r.walk, feel: r.feel, done, steps: r.steps || 0, km: r.km || 0 });
+    (state.runs = state.runs || []).push({ date: r.date, secs: Math.round(r.secs), run: r.run, walk: r.walk, feel: r.feel, done });
     if (done && !r.custom && r.level === R.level) {
       if (r.feel === 'hard') { R.ok = 0; R.hard = (R.hard || 0) + 1; if (R.hard >= 2 && R.level > 0) { R.level--; R.hard = 0; change = -1; } }
       else { R.hard = 0; R.ok = (R.ok || 0) + 1; if (R.ok >= 2 && R.level < LADDER.length - 1) { R.level++; R.ok = 0; change = 1; } }
@@ -226,6 +214,17 @@
     const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(y, m - 1, d)) / 864e5);
     return days <= 0 ? 'Ran today.' : days === 1 ? 'Ran yesterday. Every second day is enough; your call.' : 'Run day.';
   }
-  const api = { PATH, GRAD, level, info, name, ready, stepUp, stepBack, topRung, OPEN, daysBetween, comeback, testDue, buildTest, finishTest, missed, verdict, milestone, LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, targets, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
+  // The only place an old state is upgraded. Pure: returns an upgraded copy, or null when the data is not a Prisoner 15 state (v 1 or 2).
+  // v1 (up to v1.0.0) -> v2 (v1.1.0): drops the ladder and step-detection prefs. The log, runs, capacities, best sets, paths and test date are kept as they are.
+  function migrate(state, today) {
+    if (!state || typeof state !== 'object' || (state.v !== 1 && state.v !== 2)) return null;
+    const s = JSON.parse(JSON.stringify(state)), base = newState();
+    s.v = 2; s.ok = s.ok || {}; s.hard = s.hard || {}; s.flip = s.flip || {}; s.best = s.best || {}; s.log = Array.isArray(s.log) ? s.log : [];
+    s.prefs = Object.assign(base.prefs, s.prefs); delete s.prefs.light; delete s.prefs.detect;
+    if (s.cap && !s.cap0) s.cap0 = Object.assign({}, s.cap); // the comeback line starts here for histories from before v0.5
+    if (s.cap && !s.testAt) s.testAt = s.log.length ? s.log[0].date : dateKey(today || new Date());
+    return s;
+  }
+  const api = { PATH, GRAD, level, info, name, ready, stepUp, stepBack, OPEN, daysBetween, comeback, testDue, buildTest, finishTest, missed, verdict, milestone, LADDER, RUN_DONE, levelFor, finishRun, runAdvice, galloway, longRunPace, mmss, parseTime, VAR, REST, WARM, LIMIT, BUDGET, newState, dateKey, dayPlan, rounds, sessionPlan, migrate, WARM_ROUNDS, WARM_FACTOR, FACTOR, STRONG_PLUS, LAST_HEAVY, estimate, buildSession, hasFirst, target, finish, RepDetector, reps, stats };
   if (typeof module !== 'undefined') module.exports = api; else root.P15 = api;
 })(this);

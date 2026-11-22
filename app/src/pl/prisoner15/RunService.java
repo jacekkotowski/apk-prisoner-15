@@ -7,12 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -33,20 +28,13 @@ import java.util.Locale;
  * Run-walk-run interval timer. Keeps time with the screen off and speaks "Run" and "Walk" over the user's music, which is only lowered while it speaks.
  * Loud cues use the alarm volume, raised to the maximum for the run and put back afterwards, and a beep before each spoken word.
  */
-public class RunService extends Service implements SensorEventListener {
+public class RunService extends Service {
     static volatile boolean on;
     static volatile long t0;
     static volatile int run, walk, total;
-    // Walking and running detection from the step sensor (optional): steps, steps counted as running or walking, steps per minute, and what it looks like now.
-    static volatile boolean det;
-    static volatile int steps, runSteps, walkSteps, cadNow;
-    static volatile String mv = "";
-
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
-    private boolean ttsOk, half, loud, reached, warned;
-    private final Cadence cad = new Cadence();
-    private SensorManager sensors;
+    private boolean ttsOk, half, loud, reached;
     static final int MAX = 3 * 3600; // safety stop after three hours
     private int seg = -1, prevAlarm = -1;
     private PowerManager.WakeLock lock;
@@ -63,8 +51,7 @@ public class RunService extends Service implements SensorEventListener {
         if (total < 60) e = Math.min(total, e);
         double pos = e % (run + walk);
         boolean r = pos < run;
-        return "{\"on\":true,\"phase\":\"" + (r ? "run" : "walk") + "\",\"left\":" + (r ? run - pos : run + walk - pos) + ",\"elapsed\":" + e + ",\"total\":" + total
-                + ",\"det\":" + det + ",\"steps\":" + steps + ",\"rs\":" + runSteps + ",\"ws\":" + walkSteps + ",\"cad\":" + cadNow + ",\"mv\":\"" + mv + "\"}";
+        return "{\"on\":true,\"phase\":\"" + (r ? "run" : "walk") + "\",\"left\":" + (r ? run - pos : run + walk - pos) + ",\"elapsed\":" + e + ",\"total\":" + total + "}";
     }
 
     @Override public IBinder onBind(Intent i) { return null; }
@@ -73,13 +60,6 @@ public class RunService extends Service implements SensorEventListener {
         if (in == null) { stopSelf(); return START_NOT_STICKY; }
         run = Math.max(1, in.getIntExtra("run", 60)); walk = Math.max(1, in.getIntExtra("walk", 30)); total = Math.max(5, in.getIntExtra("total", 1800));
         loud = in.getBooleanExtra("loud", false);
-        if (sensors != null) sensors.unregisterListener(this);
-        det = false; steps = runSteps = walkSteps = cadNow = 0; mv = ""; cad.reset();
-        if (in.getBooleanExtra("detect", false) && checkSelfPermission("android.permission.ACTIVITY_RECOGNITION") == PackageManager.PERMISSION_GRANTED) {
-            sensors = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-            Sensor s = sensors.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
-            det = s != null && sensors.registerListener(this, s, SensorManager.SENSOR_DELAY_FASTEST);
-        }
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         nm.createNotificationChannel(new NotificationChannel("run", "Run timer", NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 3, new Intent(this, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -109,7 +89,7 @@ public class RunService extends Service implements SensorEventListener {
         });
         else if (ttsOk) tts.setAudioAttributes(aa);
         h.removeCallbacksAndMessages(null);
-        seg = -1; half = false; reached = false; warned = false; t0 = SystemClock.elapsedRealtime() + 3000; on = true; // three seconds to put the phone away
+        seg = -1; half = false; reached = false; t0 = SystemClock.elapsedRealtime() + 3000; on = true; // three seconds to put the phone away
         h.postDelayed(this::tick, 3000);
         return START_NOT_STICKY;
     }
@@ -122,15 +102,7 @@ public class RunService extends Service implements SensorEventListener {
         if (!reached && total >= 60 && e >= total) { reached = true; say((total / 60) + " minutes. Stop when you like.", 3); }
         int cyc = run + walk, s = (int) (e / cyc) * 2 + (e % cyc < run ? 0 : 1);
         if (!half && e >= total / 2.0) { half = true; say("Halfway.", 0); }
-        if (s != seg) { seg = s; warned = false; say(s % 2 == 0 ? "Run" : "Walk", s % 2 == 0 ? 1 : 2); }
-        if (det) {
-            long now = SystemClock.elapsedRealtime();
-            cadNow = (int) Math.round(cad.perMinute(now, 15000));
-            mv = cadNow < 40 ? "still" : cad.running(now, 15000) ? "run" : "walk";
-            // Still running 12 seconds into a walk break (the short window then covers only the break): say so once.
-            double inBreak = e - ((int) (e / cyc) * (double) cyc + run);
-            if (s % 2 == 1 && inBreak >= 12 && !warned && cad.running(now, 8000)) { warned = true; say("Slow to a walk.", 2); }
-        }
+        if (s != seg) { seg = s; say(s % 2 == 0 ? "Run" : "Walk", s % 2 == 0 ? 1 : 2); }
         h.postDelayed(this::tick, 200);
     }
 
@@ -152,13 +124,6 @@ public class RunService extends Service implements SensorEventListener {
             vib.vibrate(VibrationEffect.createWaveform(buzz == 1 ? new long[]{0, 500} : buzz == 2 ? new long[]{0, 150, 150, 150} : new long[]{0, 200, 150, 200, 150, 500}, -1));
     }
 
-    @Override public void onSensorChanged(SensorEvent ev) {
-        long now = SystemClock.elapsedRealtime();
-        cad.step(now); steps++;
-        if (cad.running(now, 15000)) runSteps++; else walkSteps++;
-    }
-    @Override public void onAccuracyChanged(Sensor s, int a) {}
-
     private void restoreAlarm() {
         if (prevAlarm >= 0 && am != null) { try { am.setStreamVolume(AudioManager.STREAM_ALARM, prevAlarm, 0); } catch (RuntimeException e) { /* leave it */ } }
         prevAlarm = -1;
@@ -166,7 +131,6 @@ public class RunService extends Service implements SensorEventListener {
 
     @Override public void onDestroy() {
         on = false; h.removeCallbacksAndMessages(null);
-        if (sensors != null) sensors.unregisterListener(this);
         restoreAlarm();
         if (am != null && focus != null) am.abandonAudioFocusRequest(focus);
         if (tts != null) tts.shutdown();

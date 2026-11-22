@@ -2,11 +2,11 @@
 
 For a stressed person who used to be fit. The aim is that he keeps coming back: the app shows the comeback, forgives a missed day, and never becomes one more demand.
 
-## Status: v1.0.0 (final)
+## Status: v1.1.0 (mixed sessions, decluttered)
 
-Done: Strength tab (push-ups and squats, weekly variations, even rounds, equal sides, nose pad, 15-minute cap, progression, morning reminder), Run tab (Galloway run/walk steps, spoken timer with the screen off, loud cues, flexible length, run log), Record, the v0.8 one-arm push-up and pistol paths (Path screen, six steps each, you move up by choice once the capacity reaches 10, the capacity then restarts at half) with optional 1-2-3 ladders on the light days, the v0.7 walking and running detection (optional step sensor: cadence on the run screen, one warning if you keep running 12 seconds into a walk break, steps and an estimated distance in the log), the v0.6 workout voice, and the v0.5 "Comeback" set: comeback line (first capacity to today's), test day every four weeks (offered, replaces that day's session, open sets, equal sides, sets the capacities), never miss twice (after a missed day the home screen preselects the short session and the reminder text changes), Sunday weekly sentence, 7/30/100-day milestones, backup to and from a file.
+Done: Strength tab (push-ups and squats, every session in two halves: the first 2 rounds standard push-ups and squats, the rest uneven push-ups and Bulgarian split squats, even rounds, equal sides, nose pad, 15-minute cap, progression of every variation, morning reminder), Run tab (Galloway run/walk steps, spoken timer with the screen off, loud cues, flexible length, run log), Record with the Path section (six steps toward the one-arm push-up and the pistol, you move up by choice once the capacity reaches 10, the capacity then restarts at half), the v0.6 workout voice, and the v0.5 "Comeback" set (test day every four weeks, never miss twice, Sunday weekly sentence, milestones, backup to and from a file). The home screen has one message line. The saved state is upgraded by `migrate()` (v 2); backups with v 1 or 2 load.
 
-Not yet confirmed on a phone: the path steps (set-ups, the threshold of 10, the halved restart), the ladders, the step detection and its running threshold (135 steps/min is a guess), the workout voice and the 3-2-1, nose pad (v0.3.0), loud cues, a full run with the screen off, the reminder and its missed-day text, the backup file picker.
+Not yet confirmed on a phone: the mixed session, the message line, the Path inside Record, the migration of the real v0.8 history, the workout voice and the 3-2-1, nose pad, loud cues, a full run with the screen off, the reminder and its missed-day text, the backup file picker.
 
 Notes: test day treats the stopped set (form slows, not failure) as the new capacity; targets stay a fraction of it. The comeback line starts from the first capacities stored, or from the capacities at the time of the v0.5 update for older histories.
 
@@ -18,11 +18,13 @@ Cue wording is ours, from general knowledge of the book's techniques, not checke
 
 ## Open now
 
-1. **Release on GitHub:** v1.0.0 is published by pushing the tag `v1.0.0` (the Release workflow needs the secrets `KEYSTORE_B64` and `KS_PASS`, README section Releases).
-2. **Phone test of everything since v0.3.0:** nose pad, workout voice and 3-2-1, loud run cues, a full run with the screen off, walking and running detection (threshold 135 steps per minute is a guess), the reminder and its missed-day text, backup file picker, path steps and ladders. What breaks decides the next build.
+1. **Release v1.1.0 on GitHub:** the Release workflow (secrets `KEYSTORE_B64` and `KS_PASS`, README section Releases) after the branch is merged. Save a backup in the old version before installing.
+2. **Phone test:** a mixed session, the message line, Record with the Path, the real history after the update, nose pad, workout voice and 3-2-1, loud run cues, a full run with the screen off, the reminder and its missed-day text, backup file picker. What breaks decides the next build.
 
 ## Later, only if the owner asks
 
+- 1-2-3 ladders on the light days (cut in v1.1.0).
+- Walking and running detection with the step sensor (cut in v1.1.0; it needed the physical-activity permission and its running threshold was a guess).
 - 5 km goal on the Run tab; GPS distance and pace (adds the location permission; the steps estimate is what exists now).
 - Camera squat counting.
 
